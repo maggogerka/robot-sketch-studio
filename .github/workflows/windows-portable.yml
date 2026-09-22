@@ -9,8 +9,8 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -18,7 +18,7 @@ jobs:
       - run: python -m PyInstaller --noconfirm --clean robot-sketch-studio.spec
       - shell: pwsh
         run: Compress-Archive -Path dist/RobotSketchStudio/* -DestinationPath dist/RobotSketchStudio-v0.1.0-windows-x64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: RobotSketchStudio-v0.1.0-windows-x64
           path: dist/RobotSketchStudio-v0.1.0-windows-x64.zip
