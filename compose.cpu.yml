@@ -1,0 +1,25 @@
+services:
+  sketch-studio:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    environment:
+      SKETCHARM_HOST: 0.0.0.0
+      SKETCHARM_PORT: 8000
+      SKETCHARM_API_TOKEN: ${SKETCHARM_API_TOKEN:?Set SKETCHARM_API_TOKEN in .env}
+      SKETCHARM_CORS_ORIGINS: ${SKETCHARM_CORS_ORIGINS:-}
+      SKETCHARM_MAX_UPLOAD_MB: ${SKETCHARM_MAX_UPLOAD_MB:-20}
+      SKETCHARM_JOB_TTL_HOURS: ${SKETCHARM_JOB_TTL_HOURS:-24}
+      SKETCHARM_DEVICE: cpu
+    volumes:
+      - sketch-models:/models
+      - sketch-data:/data
+      - sketch-results:/results
+    restart: unless-stopped
+
+volumes:
+  sketch-models:
+  sketch-data:
+  sketch-results:
+

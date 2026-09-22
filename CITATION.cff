@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use Robot Sketch Studio, please cite this software."
+title: "Robot Sketch Studio"
+version: 0.1.0
+date-released: 2026-09-22
+type: software
+authors:
+  - family-names: "maggogerka"
+repository-code: "https://github.com/maggogerka/robot-sketch-studio"
+url: "https://github.com/maggogerka/robot-sketch-studio"
+license: MIT
+abstract: "Local and remote photo-to-vector sketch pipeline for robotic pen drawing. Developed by maggogerka."
+

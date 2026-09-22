@@ -1,0 +1,32 @@
+services:
+  sketch-studio:
+    build:
+      context: .
+      args:
+        INSTALL_EXTRAS: ai,background
+    ports:
+      - "8000:8000"
+    environment:
+      SKETCHARM_HOST: 0.0.0.0
+      SKETCHARM_PORT: 8000
+      SKETCHARM_API_TOKEN: ${SKETCHARM_API_TOKEN:?Set SKETCHARM_API_TOKEN in .env}
+      SKETCHARM_CORS_ORIGINS: ${SKETCHARM_CORS_ORIGINS:-}
+      SKETCHARM_DEVICE: cuda
+    volumes:
+      - sketch-models:/models
+      - sketch-data:/data
+      - sketch-results:/results
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  sketch-models:
+  sketch-data:
+  sketch-results:
+
