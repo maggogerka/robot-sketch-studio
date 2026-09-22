@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Robot Sketch Studio converts photos into vector pen trajectories. Developed by maggogerka.">
+  <title>Robot Sketch Studio</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Robot Sketch Studio home">
+      <span class="brand-mark" aria-hidden="true">R</span>
+      <span><strong>Robot Sketch</strong><small>STUDIO · v0.1.0</small></span>
+    </a>
+    <nav><a href="#workspace">Workspace</a><a href="#about">About</a></nav>
+  </header>
+
+  <main id="workspace">
+    <section class="hero">
+      <p class="eyebrow">PHOTO → SKETCH → TRAJECTORY</p>
+      <h1>Turn pixels into<br><em>robot-ready lines.</em></h1>
+      <p>Local-first image processing, centreline vectorization and honest millimetre coordinates. No cloud required.</p>
+    </section>
+
+    <section class="workspace-grid">
+      <aside class="panel controls">
+        <div class="panel-heading"><span>01</span><h2>Input & settings</h2></div>
+        <label id="dropZone" class="drop-zone" tabindex="0">
+          <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+          <span class="drop-icon">↥</span>
+          <strong>Drop an image here</strong>
+          <small>or click to browse · JPG, PNG, WebP</small>
+          <b id="fileName">No file selected</b>
+        </label>
+
+        <div class="field-row">
+          <label>Engine<select id="engine"><option value="opencv_xdog">OpenCV XDoG</option><option value="lineart_ai">Lineart AI</option></select></label>
+          <label>Background<select id="background"><option value="off">Off</option><option value="auto">Auto</option><option value="person">Person</option><option value="object">Object</option></select></label>
+        </div>
+        <label class="range-label"><span>Detail <output id="detailValue">55</output></span><input id="detail" type="range" min="0" max="100" value="55"></label>
+        <label class="range-label"><span>Binarization <output id="thresholdValue">185</output></span><input id="threshold" type="range" min="1" max="254" value="185"></label>
+        <div class="field-row three">
+          <label>Min line, mm<input id="minLine" type="number" min="0" step="0.1" value="1.5"></label>
+          <label>Smoothing<input id="smoothing" type="number" min="0" max="10" step="0.1" value="1.2"></label>
+          <label>Stroke, mm<input id="strokeWidth" type="number" min="0.05" step="0.05" value="0.35"></label>
+        </div>
+        <label>Paper<select id="paper"><option value="a4_portrait">A4 portrait</option><option value="a4_landscape">A4 landscape</option><option value="custom">Custom</option></select></label>
+        <div class="field-row three">
+          <label>Width, mm<input id="pageWidth" type="number" min="21" value="210" disabled></label>
+          <label>Height, mm<input id="pageHeight" type="number" min="21" value="297" disabled></label>
+          <label>Margin, mm<input id="margin" type="number" min="0" step="1" value="10"></label>
+        </div>
+        <details class="token-settings">
+          <summary>Remote host token</summary>
+          <label>Bearer API token<input id="apiToken" type="password" autocomplete="off" placeholder="Only needed in host mode"></label>
+        </details>
+        <button id="processButton" class="primary" type="button" disabled><span>Process image</span><b>→</b></button>
+        <div id="status" class="status idle" role="status"><i></i><span>Waiting for an image</span><b>0%</b></div>
+        <p id="error" class="error" hidden></p>
+      </aside>
+
+      <section class="output-column">
+        <div class="preview-grid">
+          <article class="preview-card">
+            <header><span>Source</span><small>RASTER INPUT</small></header>
+            <div class="preview"><img id="sourcePreview" alt="Source preview"><p>Choose an image</p></div>
+          </article>
+          <article class="preview-card">
+            <header><span>Sketch</span><small>CLEAN BINARY</small></header>
+            <div class="preview"><img id="sketchPreview" alt="Sketch preview"><p>Not processed</p></div>
+          </article>
+          <article class="preview-card vector-card">
+            <header><span>Trajectory</span><small>CENTRELINE SVG</small></header>
+            <div id="svgPreview" class="preview svg-stage"><p>Not processed</p></div>
+          </article>
+        </div>
+
+        <div class="results-panel">
+          <div class="panel-heading"><span>02</span><h2>Output metrics</h2></div>
+          <dl class="metrics">
+            <div><dt>Strokes</dt><dd id="statStrokes">—</dd></div>
+            <div><dt>Drawing</dt><dd id="statDraw">—</dd></div>
+            <div><dt>Pen travel</dt><dd id="statTravel">—</dd></div>
+            <div><dt>Est. time</dt><dd id="statTime">—</dd></div>
+          </dl>
+          <div class="actions">
+            <button id="simulateButton" type="button" disabled>▶ Simulate drawing</button>
+            <button class="download" data-file="sketch.png" disabled>↓ sketch.png</button>
+            <button class="download" data-file="drawing.svg" disabled>↓ drawing.svg</button>
+            <button class="download" data-file="trajectory.json" disabled>↓ trajectory.json</button>
+          </div>
+          <p id="warnings" class="warnings" hidden></p>
+        </div>
+      </section>
+    </section>
+
+    <section id="about" class="about">
+      <p class="eyebrow">ABOUT</p>
+      <h2>Built for a pen,<br>not a plotter illusion.</h2>
+      <p>Robot Sketch Studio traces the one-pixel skeleton of each mark into open SVG paths, then orders and reverses strokes to reduce pen-up travel. v0.1.0 controls only a simulated MockRobot; physical hardware adapters are deliberately disabled.</p>
+      <a href="https://github.com/maggogerka/robot-sketch-studio" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
+    </section>
+  </main>
+
+  <footer><span>Robot Sketch Studio · MIT License</span><a href="https://github.com/maggogerka" target="_blank" rel="noreferrer">Developed by maggogerka</a></footer>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
+
