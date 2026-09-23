@@ -78,6 +78,15 @@ def test_traces_closed_loop_without_duplicate_edges():
     assert any(path[0] == path[-1] for path in paths)
 
 
+def test_graph_does_not_create_diagonal_shortcut_at_right_angle():
+    skeleton = np.zeros((5, 5), dtype=bool)
+    skeleton[1, 1:4] = True
+    skeleton[1:4, 3] = True
+    graph = build_graph(skeleton)
+    assert (2, 3) not in graph[(1, 2)]
+    assert len(assert_exact_edge_coverage(skeleton)) == 1
+
+
 def test_rdp_simplifies_collinear_points():
     points = [(float(x), 5.0 + math.sin(x) * 0.01) for x in range(30)]
     simplified = rdp(points, 0.1)

@@ -49,7 +49,14 @@ def test_health_and_complete_api_pipeline(tmp_path):
     with TestClient(create_app(settings(tmp_path))) as client:
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["version"] == "0.1.0"
+        assert health.json()["version"] == "0.2.0"
+        model_response = client.get("/api/v1/models")
+        assert model_response.status_code == 200
+        assert {item["id"] for item in model_response.json()["models"]} == {
+            "rembg-u2net",
+            "rembg-u2net-human",
+            "lineart-realistic",
+        }
         response = client.post(
             "/api/v1/jobs",
             files={"image": ("test.png", image_bytes(), "image/png")},

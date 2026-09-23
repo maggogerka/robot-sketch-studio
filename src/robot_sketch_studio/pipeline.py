@@ -32,7 +32,7 @@ class SketchPipeline:
             os.environ.setdefault("TORCH_HOME", str(cache_root / "torch"))
         self.engines = {
             SketchEngineName.OPENCV_XDOG: OpenCVXDoGEngine(),
-            SketchEngineName.LINEART_AI: LineartAIEngine(device),
+            SketchEngineName.LINEART_AI: LineartAIEngine(device, model_dir),
         }
         self.background = RembgProvider(model_dir)
 
@@ -42,12 +42,21 @@ class SketchPipeline:
                 name.value: {
                     "available": engine.available(),
                     "requires_weights": name == SketchEngineName.LINEART_AI,
+                    "dependency_available": (
+                        engine.dependency_available()
+                        if name == SketchEngineName.LINEART_AI
+                        else True
+                    ),
                 }
                 for name, engine in self.engines.items()
             },
             "background_removal": {
                 "available": self.background.available(),
                 "modes": [mode.value for mode in BackgroundMode],
+                "models": {
+                    "u2net": self.background.weights_available("auto"),
+                    "u2net_human_seg": self.background.weights_available("person"),
+                },
             },
         }
 
@@ -72,10 +81,13 @@ class SketchPipeline:
         rgb = self.load_image(source)
         warnings: list[str] = []
         if options.background != BackgroundMode.OFF:
-            if self.background.available():
+            if self.background.ready(options.background.value):
                 rgb = self.background.remove(rgb, options.background.value)
             else:
-                warnings.append("Background removal was skipped because rembg is not installed.")
+                warnings.append(
+                    "rembg background removal was skipped. Install the background extra and "
+                    "download the matching U2-Net model from Models."
+                )
 
         sketch = self.engines[options.engine].render(rgb, options)
         vector = vectorize(sketch, options)

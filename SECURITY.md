@@ -17,7 +17,6 @@ Please report vulnerabilities privately through GitHub's security advisory featu
 - Set a narrow CORS allowlist, a conservative upload limit, and a short job TTL.
 - Treat uploaded images and generated output as sensitive. Use dedicated runtime volumes and host permissions.
 - Tokens are read from headers/environment and are never intentionally logged by application code.
-- v0.1.0 cannot control real hardware.
+- v0.2.0 cannot control real hardware.
 
 Developed by maggogerka.
-

@@ -1,6 +1,6 @@
 # Architecture
 
-The v0.1.0 request path is intentionally small:
+The v0.2.0 request path is intentionally small:
 
 ```text
 browser/API → upload verification → bounded JobManager
@@ -23,4 +23,3 @@ Interfaces isolate future implementation choices:
 The Web UI is static HTML/CSS/JavaScript served by FastAPI. It has no build toolchain. All server paths are relative to the installed package or configured runtime roots, so moving the repository does not require code edits.
 
 Developed by maggogerka.
-

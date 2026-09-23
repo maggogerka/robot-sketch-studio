@@ -6,7 +6,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from robot_sketch_studio.models import ProcessingOptions
+from robot_sketch_studio.engines.opencv_xdog import OpenCVXDoGEngine
+from robot_sketch_studio.models import ImageProfile, ProcessingOptions
 from robot_sketch_studio.pipeline import SketchPipeline
 
 
@@ -53,3 +54,14 @@ def test_missing_optional_background_provider_is_nonfatal(tmp_path):
     )
     assert result.vector.stats.stroke_count > 0
     assert any("rembg" in warning for warning in result.warnings)
+
+
+def test_line_drawing_profile_preserves_marks_without_filling_page(tmp_path):
+    source = tmp_path / "source.png"
+    make_test_image(source)
+    rgb = SketchPipeline.load_image(source)
+    sketch = OpenCVXDoGEngine().render(
+        rgb, ProcessingOptions(profile=ImageProfile.LINE_DRAWING, detail=60)
+    )
+    ink_ratio = float((sketch == 0).mean())
+    assert 0.005 < ink_ratio < 0.35

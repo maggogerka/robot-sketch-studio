@@ -11,9 +11,9 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Robot Sketch Studio home">
       <span class="brand-mark" aria-hidden="true">R</span>
-      <span><strong>Robot Sketch</strong><small>STUDIO · v0.1.0</small></span>
+      <span><strong>Robot Sketch</strong><small>STUDIO · v0.2.0</small></span>
     </a>
-    <nav><a href="#workspace">Workspace</a><a href="#about">About</a></nav>
+    <nav><a href="#workspace">Workspace</a><a href="#models">Models</a><a href="#about">About</a></nav>
   </header>
 
   <main id="workspace">
@@ -38,6 +38,7 @@
           <label>Engine<select id="engine"><option value="opencv_xdog">OpenCV XDoG</option><option value="lineart_ai">Lineart AI</option></select></label>
           <label>Background<select id="background"><option value="off">Off</option><option value="auto">Auto</option><option value="person">Person</option><option value="object">Object</option></select></label>
         </div>
+        <label>Image profile<select id="profile"><option value="auto">Auto (recommended)</option><option value="photo">Photo</option><option value="portrait">Portrait</option><option value="object">Object</option><option value="document">Document</option><option value="line_drawing">Line drawing</option></select></label>
         <label class="range-label"><span>Detail <output id="detailValue">55</output></span><input id="detail" type="range" min="0" max="100" value="55"></label>
         <label class="range-label"><span>Binarization <output id="thresholdValue">185</output></span><input id="threshold" type="range" min="1" max="254" value="185"></label>
         <div class="field-row three">
@@ -95,10 +96,17 @@
       </section>
     </section>
 
+    <section id="models" class="models-section">
+      <div class="panel-heading"><span>03</span><h2>Optional local models</h2></div>
+      <p>Download verified weights directly to this host. Python dependencies are installed separately and never downloaded by the web server.</p>
+      <div id="modelList" class="model-list"><p>Loading model status...</p></div>
+      <button id="refreshModels" type="button">Refresh status</button>
+    </section>
+
     <section id="about" class="about">
       <p class="eyebrow">ABOUT</p>
       <h2>Built for a pen,<br>not a plotter illusion.</h2>
-      <p>Robot Sketch Studio traces the one-pixel skeleton of each mark into open SVG paths, then orders and reverses strokes to reduce pen-up travel. v0.1.0 controls only a simulated MockRobot; physical hardware adapters are deliberately disabled.</p>
+      <p>Robot Sketch Studio traces a cleaned one-pixel skeleton into SVG paths, removes false diagonal bridges, then orders and reverses strokes to reduce pen-up travel. v0.2.0 keeps physical hardware adapters deliberately disabled.</p>
       <a href="https://github.com/maggogerka/robot-sketch-studio" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
     </section>
   </main>
@@ -107,4 +115,3 @@
   <script src="/static/app.js" defer></script>
 </body>
 </html>
-

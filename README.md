@@ -4,27 +4,31 @@ Local and remote photo-to-vector sketch pipeline for robotic pen drawing.
 
 Robot Sketch Studio accepts JPG, PNG, and WebP, creates a cleaned monochrome sketch, reduces its marks to one-pixel centrelines, and exports robot-friendly open SVG paths plus a JSON trajectory in millimetres. The required `opencv_xdog` engine is CPU-only and needs no model weights.
 
-> v0.1.0 simulates drawing with `MockRobot`; it does **not** control physical hardware.
+> v0.2.0 focuses on photo-to-vector quality and still does **not** control physical hardware.
 
-## What works in v0.1.0
+## What works in v0.2.0
 
-- CPU photo → XDoG sketch → skeleton → SVG pipeline.
-- Optional background removal with `rembg` and optional `controlnet_aux` line art.
-- 8-connected graph tracing for endpoints, junctions, and closed cycles without reusing edges.
+- Automatic photo analysis plus photo, portrait, object, document, and line-drawing profiles.
+- CPU local-contrast/XDoG sketch → cleaned skeleton → SVG pipeline.
+- Optional background removal with `rembg` and optional `controlnet_aux` neural line art.
+- Checksum-verified model manager in the Web UI, API, CLI, and Windows helper.
+- Graph tracing for endpoints, junctions, and closed cycles without reused edges or false corner diagonals.
 - short-branch removal, Ramer–Douglas–Peucker simplification, and nearest-neighbour stroke ordering with direction reversal;
 - A4 portrait, A4 landscape, and custom paper dimensions/margins;
 - `sketch.png`, `drawing.svg`, and `trajectory.json` downloads;
 - responsive drag-and-drop Web UI with source/sketch/SVG previews and drawing simulation;
 - asynchronous versioned API with a bounded work queue and expiring jobs;
-- protected remote host mode, CPU/NVIDIA Docker Compose, Windows scripts, and portable-lite build workflow.
+- protected remote host mode, zero-dependency remote client, Docker Compose, Windows scripts, and portable-lite build workflow.
 
-Known limitations: detailed or noisy images can produce many short strokes; processing uses a proportion-preserving 2400 px working preview; vectorization follows the visible pixels and does not infer hidden geometry; AI/background extras download third-party weights separately; only the local CPU engine is guaranteed in CI; and real robot adapters are intentionally disabled. See [the roadmap](docs/roadmap.md).
+Known limitations: difficult low-contrast or very noisy images can still need profile/detail adjustment; processing uses a proportion-preserving 2400 px working preview; vectorization follows visible pixels and does not infer hidden geometry; optional dependencies and weights are installed separately; only the local CPU engine is guaranteed in CI; and real robot adapters are intentionally disabled. See [the roadmap](docs/roadmap.md).
 
 ## Windows: double-click start
 
 1. Install 64-bit Python 3.11 or newer and enable `py`/`python` in PATH.
 2. Double-click `setup_windows.bat` once. It creates `.venv`, installs dependencies, and copies `.env.example` to `.env`.
 3. Double-click `start_local.bat`. The browser opens at <http://127.0.0.1:8000>.
+
+Optional models: double-click `setup_models_windows.bat` and choose background removal, Lineart AI, or both. Downloads are stored in `SKETCHARM_MODEL_DIR` and verified before use.
 
 For a portable-lite onedir build, run `build_portable.ps1` after setup. The ZIP appears in `dist/` and includes XDoG, vectorization, Web UI/API, and MockRobot—not Qwen, CUDA, rembg, or model weights. A matching build is also produced by the Windows GitHub workflow.
 
@@ -56,7 +60,16 @@ python -m pip install -e ".[background]"  # rembg + ONNX Runtime
 python -m pip install -e ".[ai]"          # controlnet_aux + PyTorch
 ```
 
-Their first use can download large model files. Missing extras never prevent `opencv_xdog` from running. Selecting unavailable `lineart_ai` yields a clear failed-job message; selecting unavailable background removal continues without it and returns a warning.
+Download weights explicitly after installing an extra:
+
+```bash
+robot-sketch-studio models list
+robot-sketch-studio models download rembg-u2net
+robot-sketch-studio models download rembg-u2net-human
+robot-sketch-studio models download lineart-realistic
+```
+
+The Web UI exposes the same downloader. Only fixed upstream registry entries are accepted, files are written atomically, and every download is checksum-verified. Missing extras never prevent `opencv_xdog` from running.
 
 ## Docker: CPU or NVIDIA
 
@@ -76,12 +89,22 @@ Named volumes keep `/models`, `/data`, and `/results` outside the image. Move to
 
 Do not port-forward this development server directly to the public internet. Prefer [Tailscale](https://tailscale.com/), restrict access to trusted devices, keep CORS origins narrow, and use a reverse proxy with TLS for any broader deployment. Full instructions are in [docs/remote-host.md](docs/remote-host.md).
 
+On another PC, copy only `tools/remote_client.py` (Python 3 required) or use `send_to_host.bat` from a repository checkout:
+
+```bash
+python tools/remote_client.py photo.jpg --url http://drawing-pc:8000 --token YOUR_TOKEN
+```
+
+The client submits the image, waits for completion, and downloads all three artifacts. See [the API/client guide](docs/api-client.md).
+
 ## API
 
 Endpoints:
 
 - `GET /health`
 - `GET /api/v1/capabilities`
+- `GET /api/v1/models`
+- `POST /api/v1/models/{model_id}/download`
 - `POST /api/v1/jobs`
 - `GET /api/v1/jobs/{job_id}`
 - `GET /api/v1/jobs/{job_id}/artifacts`
@@ -93,7 +116,7 @@ Example (omit `Authorization` in localhost mode):
 ```bash
 curl -H "Authorization: Bearer $SKETCHARM_API_TOKEN" \
   -F "image=@portrait.jpg" \
-  -F 'options={"engine":"opencv_xdog","paper":"a4_portrait","margin_mm":10}' \
+  -F 'options={"engine":"opencv_xdog","profile":"auto","paper":"a4_portrait","margin_mm":10}' \
   http://HOST-IP:8000/api/v1/jobs
 
 curl -H "Authorization: Bearer $SKETCHARM_API_TOKEN" \
@@ -116,6 +139,8 @@ runtime/
 │   ├── drawing.svg
 │   └── trajectory.json
 └── models/
+    ├── rembg/models/<model>/<model>.onnx
+    └── lineart/{sk_model.pth,sk_model2.pth}
 ```
 
 `drawing.svg` uses physical `mm` dimensions, a matching `viewBox`, `fill="none"`, and open path centrelines. `trajectory.json` contains identical ordered points, page metadata, and distance/time statistics.

@@ -15,7 +15,6 @@ The vectorizer does not contour both sides of a thick mark. It creates one centr
 
 The tests cover straight lines, Y junctions, loops, exact edge coverage, short components, simplification, page bounds, aspect ratio, route reduction, SVG XML validity, and JSON consistency.
 
-Eight-neighbour graphs can have tiny diagonal edges around thick or pixel-staircase junctions. Noise removal and minimum physical length suppress most of them; v0.1.0 does not perform semantic topology repair.
+The tracer suppresses diagonal corner shortcuts whenever an orthogonal connection exists. This removes the small triangular branches that raw eight-neighbour graphs create around right angles while preserving true diagonal strokes. Noise removal and minimum physical length handle remaining isolated fragments.
 
 Developed by maggogerka.
-

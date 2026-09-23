@@ -18,6 +18,15 @@ class BackgroundMode(StrEnum):
     OBJECT = "object"
 
 
+class ImageProfile(StrEnum):
+    AUTO = "auto"
+    PHOTO = "photo"
+    PORTRAIT = "portrait"
+    OBJECT = "object"
+    DOCUMENT = "document"
+    LINE_DRAWING = "line_drawing"
+
+
 class PaperPreset(StrEnum):
     A4_PORTRAIT = "a4_portrait"
     A4_LANDSCAPE = "a4_landscape"
@@ -29,6 +38,7 @@ class ProcessingOptions(BaseModel):
 
     engine: SketchEngineName = SketchEngineName.OPENCV_XDOG
     background: BackgroundMode = BackgroundMode.OFF
+    profile: ImageProfile = ImageProfile.AUTO
     detail: int = Field(default=55, ge=0, le=100)
     threshold: int = Field(default=185, ge=1, le=254)
     min_line_length_mm: float = Field(default=1.5, ge=0, le=100)
@@ -104,5 +114,6 @@ class Capabilities(BaseModel):
     background_removal: dict[str, Any]
     formats: list[str]
     paper_presets: list[str]
+    image_profiles: list[str]
     host_mode: bool
     author: str = "maggogerka"

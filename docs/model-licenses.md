@@ -30,9 +30,10 @@ The required `opencv_xdog` engine is algorithmic and stores/downloads no weights
 
 No third-party model weight is stored in Git or included in portable-lite. A model's availability through a downloader does not grant redistribution rights.
 
+The built-in registry downloads only `u2net.onnx` and `u2net_human_seg.onnx` from the official rembg GitHub release, and `sk_model.pth` / `sk_model2.pth` from the official `lllyasviel/Annotators` Hugging Face repository. The application checks the pinned MD5/SHA-256 digest before atomically installing each file. Users must still review and accept the upstream terms for their use case.
+
 ## Future integrations (not bundled)
 
 SAM 2 (Meta, Apache-2.0 repository), Qwen3-VL (Qwen Team; consult the exact model card/license), Ollama, vLLM, llama.cpp, LocalAI, DirectML, and Tauri are roadmap items only. Their mention does not mean their code or weights are included.
 
 Developed by maggogerka.
-

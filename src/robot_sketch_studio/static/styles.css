@@ -94,6 +94,17 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
 .actions button:disabled { opacity: .38; cursor: not-allowed; }
 .warnings { color: #735711; background: #fff5c7; border-color: #d1a829; }
 
+.models-section { border-top: 1px solid var(--line); padding: 70px 3vw; }
+.models-section > p { max-width: 760px; color: var(--muted); line-height: 1.6; }
+.model-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 24px 0 14px; }
+.model-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 18px; background: var(--card); border: 1px solid var(--line); }
+.model-card h3, .model-card p { margin: 0; }
+.model-card p, .model-card small { color: var(--muted); line-height: 1.5; }
+.model-card code { overflow-wrap: anywhere; padding: 8px; background: #e8e7e0; font-size: 10px; }
+.model-card b { color: #a92821; font-size: 11px; overflow-wrap: anywhere; }
+.model-card button, #refreshModels { min-height: 40px; margin-top: auto; border: 1px solid var(--ink); background: var(--ink); color: var(--acid); padding: 0 13px; font-weight: 800; cursor: pointer; }
+.model-card button:disabled { opacity: .5; cursor: default; }
+
 .about { border-top: 1px solid var(--line); padding: 100px 3vw; display: grid; grid-template-columns: 1fr 1.5fr; gap: 20px 70px; }
 .about .eyebrow { grid-column: 1 / -1; }
 .about h2 { font: 400 clamp(38px, 5vw, 72px)/.95 Georgia, serif; margin: 0; letter-spacing: -.05em; }
@@ -117,7 +128,7 @@ footer a { color: var(--acid); }
   .preview-card.vector-card { grid-column: auto; }
   .field-row.three { grid-template-columns: 1fr 1fr; }
   .metrics { grid-template-columns: 1fr 1fr; }
+  .model-list { grid-template-columns: 1fr; }
   .about { padding: 70px 0; }
   footer { gap: 18px; flex-direction: column; justify-content: center; text-align: center; }
 }
-

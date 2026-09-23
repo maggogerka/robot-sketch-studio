@@ -16,7 +16,14 @@ from pydantic import ValidationError
 from robot_sketch_studio import __version__
 from robot_sketch_studio.config import Settings
 from robot_sketch_studio.jobs import JobBusyError, JobManager, JobNotFoundError, QueueFullError
-from robot_sketch_studio.models import ArtifactInfo, ArtifactList, Capabilities, ProcessingOptions
+from robot_sketch_studio.model_manager import ModelManager, UnknownModelError
+from robot_sketch_studio.models import (
+    ArtifactInfo,
+    ArtifactList,
+    Capabilities,
+    ImageProfile,
+    ProcessingOptions,
+)
 
 STATIC_DIR = Path(__file__).with_name("static")
 FORMAT_SUFFIXES = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
@@ -47,11 +54,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings or Settings.from_env()
     config.prepare()
     manager = JobManager(config)
+    models = ModelManager(config.model_dir)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         yield
         manager.close()
+        models.close()
 
     app = FastAPI(
         title="Robot Sketch Studio",
@@ -61,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = config
     app.state.jobs = manager
+    app.state.models = models
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     if config.cors_origins:
@@ -102,8 +112,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             background_removal=available["background_removal"],
             formats=["jpg", "png", "webp"],
             paper_presets=["a4_portrait", "a4_landscape", "custom"],
+            image_profiles=[profile.value for profile in ImageProfile],
             host_mode=config.host_mode,
         )
+
+    @app.get("/api/v1/models")
+    def list_models() -> dict[str, object]:
+        return {"model_dir": str(config.model_dir.resolve()), "models": models.list()}
+
+    @app.get("/api/v1/models/{model_id}")
+    def get_model(model_id: str) -> dict[str, object]:
+        try:
+            return models.describe(model_id)
+        except UnknownModelError as exc:
+            raise HTTPException(status_code=404, detail="Model not found") from exc
+
+    @app.post("/api/v1/models/{model_id}/download", status_code=202)
+    def download_model(model_id: str) -> dict[str, object]:
+        try:
+            return models.download(model_id)
+        except UnknownModelError as exc:
+            raise HTTPException(status_code=404, detail="Model not found") from exc
 
     @app.post("/api/v1/jobs", status_code=202)
     async def create_job(image: UploadFile = File(...), options: str = Form(default="{}")):

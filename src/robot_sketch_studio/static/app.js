@@ -8,6 +8,11 @@ let selectedFile = null;
 let currentJob = null;
 let objectUrls = [];
 
+$("#apiToken").value = sessionStorage.getItem("robotSketchApiToken") || "";
+$("#apiToken").addEventListener("input", (event) => {
+  sessionStorage.setItem("robotSketchApiToken", event.target.value.trim());
+});
+
 function authHeaders() {
   const token = $("#apiToken").value.trim();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -70,6 +75,7 @@ function options() {
   return {
     engine: $("#engine").value,
     background: $("#background").value,
+    profile: $("#profile").value,
     detail: Number($("#detail").value),
     threshold: Number($("#threshold").value),
     min_line_length_mm: Number($("#minLine").value),
@@ -88,6 +94,70 @@ async function apiError(response) {
     return typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
   } catch (_) {
     return `Request failed (${response.status})`;
+  }
+}
+
+function modelCard(item) {
+  const card = document.createElement("article");
+  card.className = "model-card";
+  const title = document.createElement("h3");
+  title.textContent = item.name;
+  const description = document.createElement("p");
+  description.textContent = item.description;
+  const meta = document.createElement("small");
+  const dependency = item.dependency_available ? "dependency ready" : "dependency missing";
+  meta.textContent = `${item.status.replace("_", " ")} · ${dependency} · ${item.license}`;
+  const hint = document.createElement("code");
+  hint.textContent = item.install_hint;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.modelId = item.id;
+  button.disabled = item.status === "installed" || item.status === "downloading";
+  button.textContent = item.status === "installed"
+    ? "Installed"
+    : item.status === "downloading"
+      ? `Downloading ${item.progress}%`
+      : "Download weights";
+  if (item.error) {
+    const error = document.createElement("b");
+    error.textContent = item.error;
+    card.append(title, description, meta, hint, error, button);
+  } else {
+    card.append(title, description, meta, hint, button);
+  }
+  button.addEventListener("click", () => downloadModel(item.id));
+  return card;
+}
+
+async function refreshModels() {
+  const list = $("#modelList");
+  try {
+    const response = await fetch("/api/v1/models", { headers: authHeaders() });
+    if (!response.ok) throw new Error(await apiError(response));
+    const body = await response.json();
+    list.replaceChildren(...body.models.map(modelCard));
+    return body.models;
+  } catch (error) {
+    list.textContent = `Model status unavailable: ${error.message || error}`;
+    return [];
+  }
+}
+
+async function downloadModel(modelId) {
+  try {
+    const response = await fetch(`/api/v1/models/${modelId}/download`, {
+      method: "POST",
+      headers: authHeaders()
+    });
+    if (!response.ok) throw new Error(await apiError(response));
+    for (;;) {
+      const models = await refreshModels();
+      const current = models.find((item) => item.id === modelId);
+      if (!current || current.status !== "downloading") break;
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+  } catch (error) {
+    $("#modelList").textContent = `Model download failed: ${error.message || error}`;
   }
 }
 
@@ -184,3 +254,7 @@ $("#simulateButton").addEventListener("click", () => {
     delay += duration;
   });
 });
+
+$("#refreshModels").addEventListener("click", refreshModels);
+$("#apiToken").addEventListener("change", refreshModels);
+refreshModels();

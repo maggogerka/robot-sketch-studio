@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from skimage.morphology import remove_small_objects, skeletonize
 
+from robot_sketch_studio import __version__
 from robot_sketch_studio.models import DrawingStats, ProcessingOptions
 
 Pixel = tuple[int, int]
@@ -27,7 +28,18 @@ def build_graph(skeleton: np.ndarray) -> dict[Pixel, list[Pixel]]:
     pixels = {tuple(point) for point in np.argwhere(skeleton).tolist()}
     graph: dict[Pixel, list[Pixel]] = {}
     for y, x in pixels:
-        graph[(y, x)] = [(y + dy, x + dx) for dy, dx in NEIGHBORS_8 if (y + dy, x + dx) in pixels]
+        neighbors: list[Pixel] = []
+        for dy, dx in NEIGHBORS_8:
+            candidate = (y + dy, x + dx)
+            if candidate not in pixels:
+                continue
+            # A diagonal beside an orthogonal connection is a corner-cutting
+            # shortcut, not an actual stroke. Keeping it creates tiny triangular
+            # branches around every right-angle and staircase pixel.
+            if dy and dx and ((y, x + dx) in pixels or (y + dy, x) in pixels):
+                continue
+            neighbors.append(candidate)
+        graph[(y, x)] = neighbors
     return graph
 
 
@@ -193,7 +205,7 @@ def write_svg(result: VectorResult, options: ProcessingOptions, destination: Pat
             "width": f"{_number(result.width_mm)}mm",
             "height": f"{_number(result.height_mm)}mm",
             "viewBox": f"0 0 {_number(result.width_mm)} {_number(result.height_mm)}",
-            "data-generator": "Robot Sketch Studio v0.1.0",
+            "data-generator": f"Robot Sketch Studio v{__version__}",
             "data-author": "maggogerka",
         },
     )
@@ -223,7 +235,7 @@ def write_svg(result: VectorResult, options: ProcessingOptions, destination: Pat
 def write_trajectory(result: VectorResult, options: ProcessingOptions, destination: Path) -> None:
     payload = {
         "schema_version": "1.0",
-        "generator": "Robot Sketch Studio v0.1.0",
+        "generator": f"Robot Sketch Studio v{__version__}",
         "author": "maggogerka",
         "units": "mm",
         "page": {
