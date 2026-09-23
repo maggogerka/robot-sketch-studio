@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing or new release tag (for example v0.2.0)
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -10,6 +16,8 @@ permissions:
 jobs:
   portable-release:
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -17,12 +25,45 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: python -m pip install ".[dev,build]"
+      - run: ruff format --check .
       - run: ruff check .
       - run: pytest
       - run: python -m PyInstaller --noconfirm --clean robot-sketch-studio.spec
+      - name: Smoke-test portable server
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "dist/RobotSketchStudio/RobotSketchStudio.exe" -ArgumentList @("--no-browser", "--port", "8123") -WindowStyle Hidden -PassThru
+          try {
+            $health = $null
+            for ($attempt = 0; $attempt -lt 40; $attempt++) {
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:8123/health" -TimeoutSec 2
+                break
+              } catch {
+                Start-Sleep -Milliseconds 250
+              }
+            }
+            $expectedVersion = $env:RELEASE_TAG.TrimStart("v")
+            if ($null -eq $health -or $health.status -ne "ok" -or $health.version -ne $expectedVersion) {
+              throw "Portable health check failed"
+            }
+          } finally {
+            if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
       - shell: pwsh
-        run: Compress-Archive -Path dist/RobotSketchStudio/* -DestinationPath dist/RobotSketchStudio-${{ github.ref_name }}-windows-x64.zip
+        run: |
+          $zip = "dist/RobotSketchStudio-$env:RELEASE_TAG-windows-x64.zip"
+          Compress-Archive -Path dist/RobotSketchStudio/* -DestinationPath $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          "$hash *$(Split-Path -Leaf $zip)" | Set-Content -NoNewline "$zip.sha256"
       - shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" "dist/RobotSketchStudio-${{ github.ref_name }}-windows-x64.zip" --generate-notes --verify-tag
+        run: |
+          $zip = "dist/RobotSketchStudio-$env:RELEASE_TAG-windows-x64.zip"
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG $zip "$zip.sha256" --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $env:RELEASE_TAG $zip "$zip.sha256" --generate-notes --verify-tag --repo $env:GITHUB_REPOSITORY
+          }
