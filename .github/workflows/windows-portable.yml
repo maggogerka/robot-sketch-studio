@@ -33,6 +33,10 @@ jobs:
             if ($null -eq $health -or $health.status -ne "ok" -or $health.version -ne "0.3.0") {
               throw "Portable health check failed"
             }
+            $capabilities = Invoke-RestMethod -Uri "http://127.0.0.1:8123/api/v1/capabilities" -TimeoutSec 5
+            if (-not $capabilities.engines.clean_ai.dependency_available) {
+              throw "Portable Clean AI runtime is missing"
+            }
           } finally {
             if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
           }

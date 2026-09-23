@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: python -m pip install ".[dev,build]"
+      - run: python -m pip install ".[dev,build,ai]"
       - run: ruff format --check .
       - run: ruff check .
       - run: pytest
@@ -46,6 +46,10 @@ jobs:
             $expectedVersion = $env:RELEASE_TAG.TrimStart("v")
             if ($null -eq $health -or $health.status -ne "ok" -or $health.version -ne $expectedVersion) {
               throw "Portable health check failed"
+            }
+            $capabilities = Invoke-RestMethod -Uri "http://127.0.0.1:8123/api/v1/capabilities" -TimeoutSec 5
+            if (-not $capabilities.engines.clean_ai.dependency_available) {
+              throw "Portable Clean AI runtime is missing"
             }
           } finally {
             if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
