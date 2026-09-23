@@ -31,13 +31,16 @@ def _now() -> str:
 class JobManager:
     def __init__(self, settings: Settings, pipeline: SketchPipeline | None = None) -> None:
         self.settings = settings
-        self.pipeline = pipeline or SketchPipeline(settings.device, settings.model_dir)
+        self.pipeline = pipeline or SketchPipeline(
+            settings.device, settings.model_dir, settings.comfyui_workflow
+        )
         self.jobs_dir = settings.data_dir / "jobs"
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         settings.results_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._records: dict[str, JobRecord] = {}
         self._futures: dict[str, Future[None]] = {}
+        self._remote_keys: dict[str, str] = {}
         self._capacity = threading.BoundedSemaphore(settings.max_workers + settings.queue_size)
         self._executor = ThreadPoolExecutor(
             max_workers=settings.max_workers, thread_name_prefix="sketch-job"
@@ -80,7 +83,12 @@ class JobManager:
         temporary.replace(target)
 
     def submit(
-        self, data: bytes, original_filename: str, suffix: str, options: ProcessingOptions
+        self,
+        data: bytes,
+        original_filename: str,
+        suffix: str,
+        options: ProcessingOptions,
+        remote_api_key: str = "",
     ) -> JobRecord:
         self.cleanup_expired()
         if not self._capacity.acquire(blocking=False):
@@ -102,6 +110,8 @@ class JobManager:
             source.write_bytes(data)
             with self._lock:
                 self._records[job_id] = record
+                if remote_api_key:
+                    self._remote_keys[job_id] = remote_api_key
                 self._write(record)
                 future = self._executor.submit(self._run, job_id, source)
                 future.add_done_callback(lambda _: self._capacity.release())
@@ -115,7 +125,14 @@ class JobManager:
         self._update(job_id, state=JobState.PROCESSING, progress=10, message="Creating sketch")
         try:
             record = self.get(job_id)
-            result = self.pipeline.process(source, self._result_dir(job_id), record.options)
+            with self._lock:
+                remote_api_key = self._remote_keys.get(job_id, "")
+            result = self.pipeline.process(
+                source,
+                self._result_dir(job_id),
+                record.options,
+                remote_api_key=remote_api_key,
+            )
             artifacts = {name: name for name in result.artifacts}
             self._update(
                 job_id,
@@ -134,6 +151,9 @@ class JobManager:
                 message="Processing failed",
                 error=str(exc) or type(exc).__name__,
             )
+        finally:
+            with self._lock:
+                self._remote_keys.pop(job_id, None)
 
     def _update(self, job_id: str, **changes) -> None:
         with self._lock:
@@ -152,6 +172,7 @@ class JobManager:
     def artifact_path(self, job_id: str, name: str) -> Path:
         record = self.get(job_id)
         if name not in record.artifacts or name not in {
+            "confidence.png",
             "sketch.png",
             "drawing.svg",
             "trajectory.json",
@@ -172,6 +193,7 @@ class JobManager:
                 raise JobBusyError("A running job cannot be deleted until it finishes")
             self._records.pop(normalized, None)
             self._futures.pop(normalized, None)
+            self._remote_keys.pop(normalized, None)
         shutil.rmtree(self.jobs_dir / normalized, ignore_errors=True)
         shutil.rmtree(self.settings.results_dir / normalized, ignore_errors=True)
 

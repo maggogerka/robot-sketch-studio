@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from robot_sketch_studio.engines.opencv_xdog import OpenCVXDoGEngine
-from robot_sketch_studio.models import ImageProfile, ProcessingOptions
+from robot_sketch_studio.models import ImageProfile, ProcessingOptions, SketchEngineName
 from robot_sketch_studio.pipeline import SketchPipeline
 
 
@@ -27,12 +27,18 @@ def test_full_pipeline_creates_nonempty_artifacts(tmp_path):
     result = SketchPipeline().process(
         source,
         output,
-        ProcessingOptions(min_line_length_mm=0.5, smoothing=0.8, detail=65),
+        ProcessingOptions(
+            engine=SketchEngineName.OPENCV_XDOG,
+            minimum_path_length_mm=0.5,
+            curve_fit_tolerance_mm=0.8,
+            detail=65,
+        ),
     )
     assert result.vector.stats.stroke_count > 0
     sketch = Image.open(output / "sketch.png")
     assert sketch.getbbox() is not None
     assert (output / "sketch.png").stat().st_size > 100
+    assert (output / "confidence.png").stat().st_size > 100
     root = ET.parse(output / "drawing.svg").getroot()
     assert root.tag.endswith("svg")
     assert list(root.iter("{http://www.w3.org/2000/svg}path"))
@@ -50,7 +56,11 @@ def test_missing_optional_background_provider_is_nonfatal(tmp_path):
     result = pipeline.process(
         source,
         tmp_path / "output",
-        ProcessingOptions(background="auto", min_line_length_mm=0.5),
+        ProcessingOptions(
+            engine=SketchEngineName.OPENCV_XDOG,
+            background="auto",
+            minimum_path_length_mm=0.5,
+        ),
     )
     assert result.vector.stats.stroke_count > 0
     assert any("rembg" in warning for warning in result.warnings)

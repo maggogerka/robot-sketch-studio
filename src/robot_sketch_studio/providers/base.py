@@ -30,6 +30,16 @@ class LLMProvider(ABC):
         raise NotImplementedError
 
 
+class ImageEditProvider(ABC):
+    @abstractmethod
+    def test_connection(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def edit(self, rgb: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+
 class LocalComputeProvider(ComputeProvider):
     def __init__(self, requested_device: str = "auto") -> None:
         self.requested_device = requested_device

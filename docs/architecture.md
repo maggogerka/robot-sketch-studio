@@ -1,25 +1,31 @@
 # Architecture
 
-The v0.2.0 request path is intentionally small:
+~~~text
+browser / API
+  → verified upload → bounded JobManager
+  → optional BackgroundRemovalProvider
+  → CleanAIEngine | Artistic Remote ImageEditProvider | XDoG fallback
+  → soft confidence map
+  → hysteresis / skeleton graph / smart joining / cubic fitting
+  → confidence PNG + cleaned PNG + SVG + trajectory JSON
+~~~
 
-```text
-browser/API → upload verification → bounded JobManager
-            → optional BackgroundRemovalProvider
-            → SketchEngine (OpenCV XDoG or optional Lineart AI)
-            → skeleton graph/vectorizer → PNG + SVG + trajectory JSON
-            → Web preview / MockRobot simulation
-```
+SketchEngine isolates local raster-to-line inference. ImageEditProvider isolates
+remote OpenAI-compatible and ComfyUI backends, so a future CLIPasso or SLD
+implementation can be registered without changing the GUI contract.
+BackgroundRemovalProvider and ComputeProvider remain separate. Only MockRobot
+exists; no production hardware adapter is enabled.
 
-`Settings` loads `.env` without storing secrets in source. `JobManager` uses UUID-only directories, a bounded semaphore, and a fixed-size thread executor. Persistent metadata permits inspection after completion; an interrupted queued/running job is marked failed after restart. Finished jobs older than the configured TTL are removed at startup.
+The Clean AI backend implements the official Informative Drawings generator
+architecture locally and loads checksum-pinned official weights. PyTorch is
+imported lazily, device selection is auto, cpu, or cuda, and inference returns
+floating-point confidence rather than an immediate hard threshold.
 
-Interfaces isolate future implementation choices:
+Remote URLs/models are stored with job options. Remote API keys are different:
+the browser keeps one in session storage, sends it in X-Remote-API-Key, and
+JobManager keeps it only in memory until that job finishes. It is never
+serialized to metadata.json.
 
-- `SketchEngine`: raster image to clean black-on-white line art.
-- `BackgroundRemovalProvider`: optional segmentation/compositing.
-- `ComputeProvider`: CPU/CUDA selection without coupling the CPU path to PyTorch.
-- `LLMProvider`: optional OpenAI-compatible endpoint adapter.
-- `RobotAdapter`: the command vocabulary for a robot; only the in-memory mock is safe and active.
-
-The Web UI is static HTML/CSS/JavaScript served by FastAPI. It has no build toolchain. All server paths are relative to the installed package or configured runtime roots, so moving the repository does not require code edits.
-
-Developed by maggogerka.
+The static HTML/CSS/JavaScript UI has no frontend build toolchain. Runtime roots
+are configurable, UUIDs define job directories, queue capacity is bounded, and
+host-mode /api requests require a Bearer token.

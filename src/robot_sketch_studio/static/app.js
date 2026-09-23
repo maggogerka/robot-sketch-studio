@@ -12,10 +12,31 @@ $("#apiToken").value = sessionStorage.getItem("robotSketchApiToken") || "";
 $("#apiToken").addEventListener("input", (event) => {
   sessionStorage.setItem("robotSketchApiToken", event.target.value.trim());
 });
+$("#remoteApiKey").value = sessionStorage.getItem("robotSketchRemoteApiKey") || "";
+$("#remoteApiKey").addEventListener("input", (event) => {
+  sessionStorage.setItem("robotSketchRemoteApiKey", event.target.value.trim());
+});
+$("#remoteUrl").value = localStorage.getItem("robotSketchRemoteUrl") || "";
+$("#remoteModel").value = localStorage.getItem("robotSketchRemoteModel") || "";
+$("#remoteBackend").value = localStorage.getItem("robotSketchRemoteBackend") || "openai_images";
+$("#remoteUrl").addEventListener("change", (event) => {
+  localStorage.setItem("robotSketchRemoteUrl", event.target.value.trim());
+});
+$("#remoteModel").addEventListener("change", (event) => {
+  localStorage.setItem("robotSketchRemoteModel", event.target.value.trim());
+});
+$("#remoteBackend").addEventListener("change", (event) => {
+  localStorage.setItem("robotSketchRemoteBackend", event.target.value);
+});
 
 function authHeaders() {
   const token = $("#apiToken").value.trim();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function remoteHeaders() {
+  const key = $("#remoteApiKey").value.trim();
+  return key ? { "X-Remote-API-Key": key } : {};
 }
 
 function setStatus(message, progress = 0, state = "working") {
@@ -71,20 +92,47 @@ $("#paper").addEventListener("change", (event) => {
   if (event.target.value === "a4_landscape") [$("#pageWidth").value, $("#pageHeight").value] = [297, 210];
 });
 
+const presets = {
+  minimal: { targetPaths: 16, minPath: 4, joinDistance: 2, joinAngle: 20, minFeature: 1.2, curveTolerance: 0.5 },
+  balanced: { targetPaths: 32, minPath: 2.5, joinDistance: 1.5, joinAngle: 25, minFeature: 0.8, curveTolerance: 0.3 },
+  detailed: { targetPaths: 64, minPath: 1.5, joinDistance: 1, joinAngle: 30, minFeature: 0.5, curveTolerance: 0.2 }
+};
+
+function applyPreset(name) {
+  const values = presets[name];
+  if (!values) return;
+  Object.entries(values).forEach(([id, value]) => {
+    document.querySelector("#" + id).value = value;
+  });
+}
+
+$("#drawingPreset").addEventListener("change", (event) => applyPreset(event.target.value));
+$("#engine").addEventListener("change", (event) => {
+  $("#remoteSettings").hidden = event.target.value !== "artistic_remote";
+});
+
 function options() {
   return {
     engine: $("#engine").value,
     background: $("#background").value,
     profile: $("#profile").value,
+    drawing_preset: $("#drawingPreset").value,
     detail: Number($("#detail").value),
     threshold: Number($("#threshold").value),
-    min_line_length_mm: Number($("#minLine").value),
-    smoothing: Number($("#smoothing").value),
+    target_paths: Number($("#targetPaths").value),
+    minimum_path_length_mm: Number($("#minPath").value),
+    join_distance_mm: Number($("#joinDistance").value),
+    maximum_join_angle_deg: Number($("#joinAngle").value),
+    minimum_feature_size_mm: Number($("#minFeature").value),
+    curve_fit_tolerance_mm: Number($("#curveTolerance").value),
     paper: $("#paper").value,
     page_width_mm: Number($("#pageWidth").value),
     page_height_mm: Number($("#pageHeight").value),
     margin_mm: Number($("#margin").value),
-    stroke_width_mm: Number($("#strokeWidth").value)
+    stroke_width_mm: Number($("#strokeWidth").value),
+    remote_backend: $("#remoteBackend").value,
+    remote_url: $("#engine").value === "artistic_remote" ? $("#remoteUrl").value.trim() : null,
+    remote_model: $("#remoteModel").value.trim() || null
   };
 }
 
@@ -161,6 +209,33 @@ async function downloadModel(modelId) {
   }
 }
 
+$("#testRemote").addEventListener("click", async () => {
+  const indicator = $("#remoteStatus");
+  indicator.className = "";
+  indicator.textContent = "Connecting…";
+  try {
+    const response = await fetch("/api/v1/remote/test", {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        ...remoteHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        backend: $("#remoteBackend").value,
+        url: $("#remoteUrl").value.trim(),
+        model: $("#remoteModel").value.trim() || null
+      })
+    });
+    if (!response.ok) throw new Error(await apiError(response));
+    indicator.className = "ok";
+    indicator.textContent = "Connection successful.";
+  } catch (error) {
+    indicator.className = "failed";
+    indicator.textContent = error.message || String(error);
+  }
+});
+
 async function pollJob(jobId) {
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, 450));
@@ -212,7 +287,11 @@ processButton.addEventListener("click", async () => {
     const form = new FormData();
     form.append("image", selectedFile);
     form.append("options", JSON.stringify(options()));
-    const response = await fetch("/api/v1/jobs", { method: "POST", headers: authHeaders(), body: form });
+    const headers = {
+      ...authHeaders(),
+      ...($("#engine").value === "artistic_remote" ? remoteHeaders() : {})
+    };
+    const response = await fetch("/api/v1/jobs", { method: "POST", headers, body: form });
     if (!response.ok) throw new Error(await apiError(response));
     const created = await response.json();
     await showResult(await pollJob(created.id));

@@ -4,12 +4,13 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import cv2
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from robot_sketch_studio.engines import LineartAIEngine, OpenCVXDoGEngine
+from robot_sketch_studio.engines import CleanAIEngine, OpenCVXDoGEngine
 from robot_sketch_studio.models import BackgroundMode, ProcessingOptions, SketchEngineName
-from robot_sketch_studio.providers import RembgProvider
+from robot_sketch_studio.providers import RembgProvider, create_image_edit_provider
 from robot_sketch_studio.vectorization import VectorResult, vectorize, write_svg, write_trajectory
 
 
@@ -25,30 +26,46 @@ class PipelineResult:
 
 
 class SketchPipeline:
-    def __init__(self, device: str = "auto", model_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        device: str = "auto",
+        model_dir: Path | None = None,
+        comfyui_workflow: Path | None = None,
+    ) -> None:
         if model_dir is not None:
             cache_root = model_dir.expanduser().resolve()
             os.environ.setdefault("HF_HOME", str(cache_root / "huggingface"))
             os.environ.setdefault("TORCH_HOME", str(cache_root / "torch"))
+        clean_ai = CleanAIEngine(device, model_dir)
         self.engines = {
+            SketchEngineName.CLEAN_AI: clean_ai,
+            SketchEngineName.LINEART_AI: clean_ai,
             SketchEngineName.OPENCV_XDOG: OpenCVXDoGEngine(),
-            SketchEngineName.LINEART_AI: LineartAIEngine(device, model_dir),
         }
         self.background = RembgProvider(model_dir)
+        self.comfyui_workflow = comfyui_workflow
 
     def capabilities(self) -> dict[str, object]:
         return {
             "engines": {
-                name.value: {
-                    "available": engine.available(),
-                    "requires_weights": name == SketchEngineName.LINEART_AI,
-                    "dependency_available": (
-                        engine.dependency_available()
-                        if name == SketchEngineName.LINEART_AI
-                        else True
-                    ),
-                }
-                for name, engine in self.engines.items()
+                SketchEngineName.CLEAN_AI.value: {
+                    "available": self.engines[SketchEngineName.CLEAN_AI].available(),
+                    "requires_weights": True,
+                    "dependency_available": self.engines[
+                        SketchEngineName.CLEAN_AI
+                    ].dependency_available(),
+                },
+                SketchEngineName.ARTISTIC_REMOTE.value: {
+                    "available": True,
+                    "requires_weights": False,
+                    "dependency_available": True,
+                },
+                SketchEngineName.OPENCV_XDOG.value: {
+                    "available": True,
+                    "requires_weights": False,
+                    "dependency_available": True,
+                    "fallback": True,
+                },
             },
             "background_removal": {
                 "available": self.background.available(),
@@ -76,7 +93,13 @@ class SketchPipeline:
         except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
             raise InvalidImageError("The upload is not a valid JPG, PNG, or WebP image") from exc
 
-    def process(self, source: Path, output_dir: Path, options: ProcessingOptions) -> PipelineResult:
+    def process(
+        self,
+        source: Path,
+        output_dir: Path,
+        options: ProcessingOptions,
+        remote_api_key: str = "",
+    ) -> PipelineResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         rgb = self.load_image(source)
         warnings: list[str] = []
@@ -89,17 +112,35 @@ class SketchPipeline:
                     "download the matching U2-Net model from Models."
                 )
 
-        sketch = self.engines[options.engine].render(rgb, options)
-        vector = vectorize(sketch, options)
+        if options.engine == SketchEngineName.ARTISTIC_REMOTE:
+            provider = create_image_edit_provider(
+                options.remote_backend,
+                options.remote_url or "",
+                options.remote_model,
+                remote_api_key,
+                self.comfyui_workflow,
+            )
+            edited = provider.edit(rgb)
+            gray = cv2.cvtColor(edited, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
+            confidence = np.clip(1.0 - gray, 0.0, 1.0)
+        else:
+            confidence = self.engines[options.engine].render_confidence(rgb, options)
+        vector = vectorize(confidence, options)
+        confidence_path = output_dir / "confidence.png"
         sketch_path = output_dir / "sketch.png"
         svg_path = output_dir / "drawing.svg"
         trajectory_path = output_dir / "trajectory.json"
-        Image.fromarray(sketch, mode="L").save(sketch_path, format="PNG", optimize=True)
+        confidence_image = np.rint((1.0 - confidence) * 255.0).astype(np.uint8)
+        Image.fromarray(confidence_image, mode="L").save(
+            confidence_path, format="PNG", optimize=True
+        )
+        Image.fromarray(vector.preview, mode="L").save(sketch_path, format="PNG", optimize=True)
         write_svg(vector, options, svg_path)
         write_trajectory(vector, options, trajectory_path)
         return PipelineResult(
             vector=vector,
             artifacts={
+                "confidence.png": str(confidence_path),
                 "sketch.png": str(sketch_path),
                 "drawing.svg": str(svg_path),
                 "trajectory.json": str(trajectory_path),

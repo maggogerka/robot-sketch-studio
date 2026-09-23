@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Robot Sketch Studio home">
       <span class="brand-mark" aria-hidden="true">R</span>
-      <span><strong>Robot Sketch</strong><small>STUDIO · v0.2.0</small></span>
+      <span><strong>Robot Sketch</strong><small>STUDIO · v0.3.0</small></span>
     </a>
     <nav><a href="#workspace">Workspace</a><a href="#models">Models</a><a href="#about">About</a></nav>
   </header>
@@ -20,7 +20,7 @@
     <section class="hero">
       <p class="eyebrow">PHOTO → SKETCH → TRAJECTORY</p>
       <h1>Turn pixels into<br><em>robot-ready lines.</em></h1>
-      <p>Local-first image processing, centreline vectorization and honest millimetre coordinates. No cloud required.</p>
+      <p>Semantic AI line art, smooth Bézier paths and honest millimetre coordinates. Local first, remote when you need more power.</p>
     </section>
 
     <section class="workspace-grid">
@@ -35,17 +35,38 @@
         </label>
 
         <div class="field-row">
-          <label>Engine<select id="engine"><option value="opencv_xdog">OpenCV XDoG</option><option value="lineart_ai">Lineart AI</option></select></label>
+          <label>Engine<select id="engine"><option value="clean_ai">Clean AI Sketch</option><option value="artistic_remote">Artistic Remote</option><option value="opencv_xdog">OpenCV XDoG (fallback)</option></select></label>
           <label>Background<select id="background"><option value="off">Off</option><option value="auto">Auto</option><option value="person">Person</option><option value="object">Object</option></select></label>
         </div>
-        <label>Image profile<select id="profile"><option value="auto">Auto (recommended)</option><option value="photo">Photo</option><option value="portrait">Portrait</option><option value="object">Object</option><option value="document">Document</option><option value="line_drawing">Line drawing</option></select></label>
-        <label class="range-label"><span>Detail <output id="detailValue">55</output></span><input id="detail" type="range" min="0" max="100" value="55"></label>
-        <label class="range-label"><span>Binarization <output id="thresholdValue">185</output></span><input id="threshold" type="range" min="1" max="254" value="185"></label>
-        <div class="field-row three">
-          <label>Min line, mm<input id="minLine" type="number" min="0" step="0.1" value="1.5"></label>
-          <label>Smoothing<input id="smoothing" type="number" min="0" max="10" step="0.1" value="1.2"></label>
-          <label>Stroke, mm<input id="strokeWidth" type="number" min="0.05" step="0.05" value="0.35"></label>
+        <div class="field-row">
+          <label>Drawing preset<select id="drawingPreset"><option value="minimal">Minimal</option><option value="balanced" selected>Balanced</option><option value="detailed">Detailed</option></select></label>
+          <label>Image profile<select id="profile"><option value="auto">Auto</option><option value="photo">Photo</option><option value="portrait">Portrait</option><option value="object">Object</option><option value="document">Document</option><option value="line_drawing">Line drawing</option></select></label>
         </div>
+        <label class="range-label"><span>Detail <output id="detailValue">55</output></span><input id="detail" type="range" min="0" max="100" value="55"></label>
+        <label class="range-label"><span>Confidence cutoff <output id="thresholdValue">185</output></span><input id="threshold" type="range" min="1" max="254" value="185"></label>
+        <details class="token-settings">
+          <summary>Vector tuning in millimetres</summary>
+          <div class="field-row three compact-fields">
+            <label>Target paths<input id="targetPaths" type="number" min="4" max="512" value="32"></label>
+            <label>Min path<input id="minPath" type="number" min="0" step="0.1" value="2.5"></label>
+            <label>Join distance<input id="joinDistance" type="number" min="0" step="0.1" value="1.5"></label>
+            <label>Join angle °<input id="joinAngle" type="number" min="0" max="90" value="25"></label>
+            <label>Min feature<input id="minFeature" type="number" min="0" step="0.1" value="0.8"></label>
+            <label>Curve tolerance<input id="curveTolerance" type="number" min="0.01" step="0.05" value="0.3"></label>
+            <label>Stroke width<input id="strokeWidth" type="number" min="0.05" step="0.05" value="0.35"></label>
+          </div>
+        </details>
+        <section id="remoteSettings" class="remote-settings" hidden>
+          <h3>Artistic Remote</h3>
+          <label>Backend<select id="remoteBackend"><option value="openai_images">OpenAI-compatible image edit</option><option value="comfyui">ComfyUI workflow</option></select></label>
+          <label>Server URL<input id="remoteUrl" type="url" placeholder="http://192.168.1.20:8188"></label>
+          <div class="field-row">
+            <label>Model<input id="remoteModel" type="text" placeholder="Qwen-Image-Edit / FLUX"></label>
+            <label>API key<input id="remoteApiKey" type="password" autocomplete="off" placeholder="Kept in this tab only"></label>
+          </div>
+          <button id="testRemote" type="button">Test connection</button>
+          <small id="remoteStatus">Configure your image-edit server.</small>
+        </section>
         <label>Paper<select id="paper"><option value="a4_portrait">A4 portrait</option><option value="a4_landscape">A4 landscape</option><option value="custom">Custom</option></select></label>
         <div class="field-row three">
           <label>Width, mm<input id="pageWidth" type="number" min="21" value="210" disabled></label>
@@ -87,6 +108,7 @@
           </dl>
           <div class="actions">
             <button id="simulateButton" type="button" disabled>▶ Simulate drawing</button>
+            <button class="download" data-file="confidence.png" disabled>↓ confidence.png</button>
             <button class="download" data-file="sketch.png" disabled>↓ sketch.png</button>
             <button class="download" data-file="drawing.svg" disabled>↓ drawing.svg</button>
             <button class="download" data-file="trajectory.json" disabled>↓ trajectory.json</button>
@@ -97,8 +119,8 @@
     </section>
 
     <section id="models" class="models-section">
-      <div class="panel-heading"><span>03</span><h2>Optional local models</h2></div>
-      <p>Download verified weights directly to this host. Python dependencies are installed separately and never downloaded by the web server.</p>
+      <div class="panel-heading"><span>03</span><h2>Local AI models</h2></div>
+      <p>Download checksum-verified official weights directly to this PC. Run <code>setup_models_windows.bat</code> once to install the AI runtime without using a terminal.</p>
       <div id="modelList" class="model-list"><p>Loading model status...</p></div>
       <button id="refreshModels" type="button">Refresh status</button>
     </section>
@@ -106,7 +128,7 @@
     <section id="about" class="about">
       <p class="eyebrow">ABOUT</p>
       <h2>Built for a pen,<br>not a plotter illusion.</h2>
-      <p>Robot Sketch Studio traces a cleaned one-pixel skeleton into SVG paths, removes false diagonal bridges, then orders and reverses strokes to reduce pen-up travel. v0.2.0 keeps physical hardware adapters deliberately disabled.</p>
+      <p>v0.3.0 keeps a soft AI confidence map, joins aligned fragments through crossings, fits cubic Bézier curves and orders the final strokes to reduce pen-up travel. XDoG remains available as a fast fallback.</p>
       <a href="https://github.com/maggogerka/robot-sketch-studio" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
     </section>
   </main>

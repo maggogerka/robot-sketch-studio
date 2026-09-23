@@ -1,44 +1,57 @@
 # Remote host deployment
 
-## Windows/LAN
+This mode runs the complete Robot Sketch Studio pipeline on a powerful PC and
+uses it from another computer.
 
-Run `setup_windows.bat`, then `start_host.bat`. The script binds to all interfaces, generates a cryptographically random per-session token if none is configured, prints usable LAN addresses, and does not open a browser. Put a stable `SKETCHARM_API_TOKEN` in the environment or `.env` for a persistent client configuration.
+## Powerful Windows PC
 
-From the second PC, first open the printed URL in a browser and enter the same token under **Remote host token**. To process without a browser, copy `tools/remote_client.py` and run:
+1. Run setup_windows.bat.
+2. Run setup_models_windows.bat and choose Clean AI Sketch, or download
+   Informative Drawings from the Web UI.
+3. Run start_host.bat.
+4. Keep the displayed Bearer token and URL open.
 
-```powershell
+start_host.bat binds to 0.0.0.0, generates a cryptographically random
+per-session token when none is configured, and prints usable LAN addresses. Put
+a stable SKETCHARM_API_TOKEN in .env or the machine environment when clients
+must reconnect after restarts.
+
+## Client PC
+
+Open the printed URL in a browser and enter the token under **Remote host
+token**. The model, CPU/GPU work, and result files stay on the host.
+
+For scripting, copy tools/remote_client.py and run:
+
+~~~powershell
 py -3 remote_client.py photo.jpg --url http://HOST-IP:8000 --token YOUR_TOKEN
-```
+~~~
 
-The results appear in `robot-sketch-result`. A checkout on the second Windows PC can use `send_to_host.bat photo.jpg` instead. The client needs Python 3 but no third-party packages.
+The standard-library client needs no third-party package and downloads all
+reported artifacts. A repository checkout can instead use send_to_host.bat.
 
-If the second PC cannot connect on a trusted LAN, allow inbound TCP for the configured port in Windows Firewall on the host. Do not open the port on the internet router. Check `http://HOST-IP:8000/health` first; it is public and should return `{"status":"ok",...}`.
+Check http://HOST-IP:8000/health first if the client cannot connect. On a trusted
+LAN, allow inbound TCP for the selected port in Windows Firewall. Never add a
+public router port-forward directly to Uvicorn.
 
 ## Tailscale (recommended)
 
-1. Install Tailscale on the server and client and sign both into the same tailnet.
+1. Install Tailscale on both PCs and sign them into the same tailnet.
 2. Start Robot Sketch Studio in host mode.
-3. Use the server's Tailscale IP or MagicDNS name, such as `http://drawing-pc:8000`.
-4. Keep the Bearer token enabled even inside the tailnet and add tailnet ACLs that admit only intended users/devices.
-5. Do not add a public router port-forward.
+3. Use the host's Tailscale address or MagicDNS name.
+4. Keep the Bearer token enabled and restrict access with tailnet ACLs.
 
-## Docker host
+## Docker
 
-Copy `.env.example` to `.env`, set a random API token, and start either Compose file. Preserve the three named volumes when updating or moving the service. `/health` is public for health checks; `/api/v1/*` is token-protected.
+Copy .env.example to .env, set a random SKETCHARM_API_TOKEN, then start
+compose.cpu.yml or compose.nvidia.yml. Preserve the model/data/result volumes
+between updates. /health is public; /api/v1/* is token-protected.
 
-For a browser hosted at another origin, set `SKETCHARM_CORS_ORIGINS` to an explicit comma-separated allowlist. Do not use `*` on an untrusted network. Terminate HTTPS in a maintained reverse proxy if traffic crosses an untrusted network. Uvicorn itself is not an internet edge server.
+Set SKETCHARM_CORS_ORIGINS to an explicit comma-separated allowlist only when a
+browser is served from another origin. Use a maintained TLS reverse proxy for
+any untrusted network.
 
-The API token is a shared secret, not a user/account system. Rotate it after exposure and isolate sensitive uploaded images at the filesystem/container level.
-
-## Models on the host
-
-Weights always belong on the host, not on the client. Use the **Optional local models** panel, `setup_models_windows.bat`, or:
-
-```powershell
-robot-sketch-studio models list
-robot-sketch-studio models download lineart-realistic
-```
-
-The Web/API downloader accepts only known model IDs and verifies checksums. Install the matching Python extra shown in the model panel before selecting that engine.
-
-Developed by maggogerka.
+This host mode is separate from **Artistic Remote**. Host mode moves the whole
+application to the powerful PC. Artistic Remote keeps this application local
+and calls a separate image-edit server; see
+[artistic-remote.md](artistic-remote.md).

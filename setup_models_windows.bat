@@ -9,7 +9,7 @@ if not exist ".venv\Scripts\python.exe" (
 set "CHOICE=%~1"
 if not defined CHOICE (
   echo 1 - Background removal models
-  echo 2 - Lineart AI model
+  echo 2 - Clean AI Sketch ^(Informative Drawings^)
   echo 3 - All optional models
   set /p "CHOICE=Select 1, 2, or 3: "
 )
@@ -31,14 +31,14 @@ goto done
 
 :lineart
 python -m pip install -e ".[ai]" || exit /b 1
-robot-sketch-studio models download lineart-realistic || exit /b 1
+robot-sketch-studio models download informative-drawings || exit /b 1
 goto done
 
 :all
 python -m pip install -e ".[background,ai]" || exit /b 1
 robot-sketch-studio models download rembg-u2net || exit /b 1
 robot-sketch-studio models download rembg-u2net-human || exit /b 1
-robot-sketch-studio models download lineart-realistic || exit /b 1
+robot-sketch-studio models download informative-drawings || exit /b 1
 
 :done
 echo Optional models are ready.

@@ -74,23 +74,29 @@ MODEL_SPECS = (
         ),
     ),
     ModelSpec(
-        id="lineart-realistic",
-        name="ControlNet Lineart",
-        provider="controlnet_aux",
-        description="Neural line extraction for photographs and detailed objects.",
-        dependency="controlnet_aux",
+        id="informative-drawings",
+        name="Informative Drawings (official)",
+        provider="carolineec/informative-drawings",
+        description="Semantic photo-to-line drawing model published at CVPR 2022.",
+        dependency="torch",
         install_extra="ai",
-        license="See lllyasviel/Annotators model card",
+        license="MIT project; official author-hosted weights",
         files=(
             ModelFile(
                 path="lineart/sk_model.pth",
-                url="https://huggingface.co/lllyasviel/Annotators/resolve/main/sk_model.pth",
+                url=(
+                    "https://huggingface.co/spaces/carolineec/"
+                    "informativedrawings/resolve/main/model.pth"
+                ),
                 checksum="c686ced2a666b4850b4bb6ccf0748031c3eda9f822de73a34b8979970d90f0c6",
                 size=17_173_511,
             ),
             ModelFile(
                 path="lineart/sk_model2.pth",
-                url="https://huggingface.co/lllyasviel/Annotators/resolve/main/sk_model2.pth",
+                url=(
+                    "https://huggingface.co/spaces/carolineec/"
+                    "informativedrawings/resolve/main/model2.pth"
+                ),
                 checksum="30a534781061f34e83bb9406b4335da4ff2616c95d22a585c1245aa8363e74e0",
                 size=17_173_511,
             ),
@@ -120,7 +126,12 @@ class ModelManager:
         self._state: dict[str, dict[str, object]] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="model-download")
 
+    @staticmethod
+    def _canonical_id(model_id: str) -> str:
+        return "informative-drawings" if model_id == "lineart-realistic" else model_id
+
     def _spec(self, model_id: str) -> ModelSpec:
+        model_id = self._canonical_id(model_id)
         try:
             return self._specs[model_id]
         except KeyError as exc:
@@ -134,6 +145,7 @@ class ModelManager:
         )
 
     def describe(self, model_id: str) -> dict[str, object]:
+        model_id = self._canonical_id(model_id)
         spec = self._spec(model_id)
         with self._lock:
             state = self._state.get(model_id, {}).copy()
@@ -165,6 +177,7 @@ class ModelManager:
         return [self.describe(model_id) for model_id in self._specs]
 
     def download(self, model_id: str) -> dict[str, object]:
+        model_id = self._canonical_id(model_id)
         spec = self._spec(model_id)
         with self._lock:
             state = self._state.get(model_id, {})

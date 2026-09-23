@@ -47,20 +47,32 @@ def wait_for_job(client: TestClient, job_id: str, headers=None):
 
 def test_health_and_complete_api_pipeline(tmp_path):
     with TestClient(create_app(settings(tmp_path))) as client:
+        page = client.get("/")
+        assert page.status_code == 200
+        assert "Clean AI Sketch" in page.text
+        assert "Artistic Remote" in page.text
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["version"] == "0.2.0"
+        assert health.json()["version"] == "0.3.0"
         model_response = client.get("/api/v1/models")
         assert model_response.status_code == 200
         assert {item["id"] for item in model_response.json()["models"]} == {
             "rembg-u2net",
             "rembg-u2net-human",
-            "lineart-realistic",
+            "informative-drawings",
         }
         response = client.post(
             "/api/v1/jobs",
             files={"image": ("test.png", image_bytes(), "image/png")},
-            data={"options": json.dumps({"min_line_length_mm": 0.5, "smoothing": 0.5})},
+            data={
+                "options": json.dumps(
+                    {
+                        "engine": "opencv_xdog",
+                        "minimum_path_length_mm": 0.5,
+                        "curve_fit_tolerance_mm": 0.5,
+                    }
+                )
+            },
         )
         assert response.status_code == 202
         job_id = response.json()["id"]
@@ -71,6 +83,7 @@ def test_health_and_complete_api_pipeline(tmp_path):
         artifacts = client.get(f"/api/v1/jobs/{job_id}/artifacts")
         assert artifacts.status_code == 200
         assert {item["name"] for item in artifacts.json()["artifacts"]} == {
+            "confidence.png",
             "sketch.png",
             "drawing.svg",
             "trajectory.json",
@@ -120,3 +133,63 @@ def test_host_mode_refuses_to_start_without_token(tmp_path):
         assert "API_TOKEN" in str(exc)
     else:
         raise AssertionError("Host mode started without a token")
+
+
+def test_remote_connection_forwards_key_without_persisting_it(tmp_path, monkeypatch):
+    captured = {}
+
+    class FakeProvider:
+        def test_connection(self):
+            return {"ok": True, "backend": "openai_images"}
+
+    def fake_provider(backend, url, model, api_key, workflow):
+        captured.update(
+            backend=backend,
+            url=url,
+            model=model,
+            api_key=api_key,
+            workflow=workflow,
+        )
+        return FakeProvider()
+
+    monkeypatch.setattr("robot_sketch_studio.app.create_image_edit_provider", fake_provider)
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/remote/test",
+            headers={"X-Remote-API-Key": "remote-secret"},
+            json={
+                "backend": "openai_images",
+                "url": "http://render-pc:9000/v1",
+                "model": "qwen-edit",
+            },
+        )
+        assert response.status_code == 200
+        assert captured["api_key"] == "remote-secret"
+
+        class FailingPipeline:
+            def process(self, source, output_dir, options, remote_api_key=""):
+                captured["job_key"] = remote_api_key
+                raise RuntimeError("expected test stop")
+
+        app.state.jobs.pipeline = FailingPipeline()
+        job_response = client.post(
+            "/api/v1/jobs",
+            headers={"X-Remote-API-Key": "job-secret"},
+            files={"image": ("test.png", image_bytes(), "image/png")},
+            data={
+                "options": json.dumps(
+                    {
+                        "engine": "artistic_remote",
+                        "remote_url": "http://render-pc:9000/v1",
+                    }
+                )
+            },
+        )
+        job_id = job_response.json()["id"]
+        job = wait_for_job(client, job_id)
+        assert job["state"] == "failed"
+        assert captured["job_key"] == "job-secret"
+        metadata = (tmp_path / "data" / "jobs" / job_id / "metadata.json").read_text()
+        assert "job-secret" not in metadata
+        assert job_id not in app.state.jobs._remote_keys

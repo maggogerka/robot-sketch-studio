@@ -44,6 +44,7 @@ class Settings:
     cors_origins: list[str] = field(default_factory=list)
     max_workers: int = 2
     queue_size: int = 4
+    comfyui_workflow: Path | None = None
     ollama_base_url: str = "http://127.0.0.1:11434/v1"
     ollama_model: str = ""
     ollama_api_key: str = ""
@@ -65,6 +66,11 @@ class Settings:
             cors_origins=_split_csv(os.getenv("SKETCHARM_CORS_ORIGINS", "")),
             max_workers=max(1, int(os.getenv("SKETCHARM_MAX_WORKERS", "2"))),
             queue_size=max(0, int(os.getenv("SKETCHARM_QUEUE_SIZE", "4"))),
+            comfyui_workflow=(
+                Path(os.environ["SKETCHARM_COMFYUI_WORKFLOW"])
+                if os.getenv("SKETCHARM_COMFYUI_WORKFLOW")
+                else None
+            ),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
             ollama_model=os.getenv("OLLAMA_MODEL", ""),
             ollama_api_key=os.getenv("OLLAMA_API_KEY", ""),

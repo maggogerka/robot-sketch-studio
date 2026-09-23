@@ -1,162 +1,204 @@
 # Robot Sketch Studio
 
-Local and remote photo-to-vector sketch pipeline for robotic pen drawing.
+Photo-to-vector sketch conversion for robotic pen drawing. Developed by
+[maggogerka](https://github.com/maggogerka).
 
-Robot Sketch Studio accepts JPG, PNG, and WebP, creates a cleaned monochrome sketch, reduces its marks to one-pixel centrelines, and exports robot-friendly open SVG paths plus a JSON trajectory in millimetres. The required `opencv_xdog` engine is CPU-only and needs no model weights.
+Robot Sketch Studio v0.3.0 turns a photograph into a small set of long, smooth,
+open SVG paths in millimetres. It is focused on producing artwork that can be
+handed to a Rotrix DexArm workflow; it does not control the arm itself.
 
-> v0.2.0 focuses on photo-to-vector quality and still does **not** control physical hardware.
+## What is new in v0.3.0
 
-## What works in v0.2.0
+- **Clean AI Sketch** is now the default local engine. It runs the official
+  pretrained Informative Drawings generator on CPU or CUDA and retains its soft
+  grayscale confidence map.
+- **Artistic Remote** sends the source photo and a fixed plotter-oriented prompt
+  to an OpenAI-compatible Qwen/FLUX image-edit endpoint or a ComfyUI workflow.
+- **Minimal**, **Balanced**, and **Detailed** presets control the intended path
+  count and all cleanup tolerances in physical millimetres.
+- The vectorizer uses Gaussian softening, hysteresis thresholding, physical
+  component cleanup, gap closing, skeletonization, straight-through junction
+  tracing, direction-aware endpoint joining, blank-gap rejection, cubic Bézier
+  fitting, path limiting, and pen-up route optimization.
+- Results now include confidence.png, cleaned sketch.png, cubic drawing.svg, and
+  trajectory.json.
+- OpenCV XDoG remains available as a fast, model-free fallback.
 
-- Automatic photo analysis plus photo, portrait, object, document, and line-drawing profiles.
-- CPU local-contrast/XDoG sketch → cleaned skeleton → SVG pipeline.
-- Optional background removal with `rembg` and optional `controlnet_aux` neural line art.
-- Checksum-verified model manager in the Web UI, API, CLI, and Windows helper.
-- Graph tracing for endpoints, junctions, and closed cycles without reused edges or false corner diagonals.
-- short-branch removal, Ramer–Douglas–Peucker simplification, and nearest-neighbour stroke ordering with direction reversal;
-- A4 portrait, A4 landscape, and custom paper dimensions/margins;
-- `sketch.png`, `drawing.svg`, and `trajectory.json` downloads;
-- responsive drag-and-drop Web UI with source/sketch/SVG previews and drawing simulation;
-- asynchronous versioned API with a bounded work queue and expiring jobs;
-- protected remote host mode, zero-dependency remote client, Docker Compose, Windows scripts, and portable-lite build workflow.
+## Windows: start without a terminal
 
-Known limitations: difficult low-contrast or very noisy images can still need profile/detail adjustment; processing uses a proportion-preserving 2400 px working preview; vectorization follows visible pixels and does not infer hidden geometry; optional dependencies and weights are installed separately; only the local CPU engine is guaranteed in CI; and real robot adapters are intentionally disabled. See [the roadmap](docs/roadmap.md).
+### Release ZIP
 
-## Windows: double-click start
+1. Download and extract RobotSketchStudio-v0.3.0-windows-x64.zip.
+2. Double-click RobotSketchStudio.exe. It starts without a console window and
+   opens <http://127.0.0.1:8000>.
+3. Open **Models** and download **Informative Drawings (official)**.
+4. Choose a photo, select a preset, press **Process image**, then download
+   drawing.svg.
 
-1. Install 64-bit Python 3.11 or newer and enable `py`/`python` in PATH.
-2. Double-click `setup_windows.bat` once. It creates `.venv`, installs dependencies, and copies `.env.example` to `.env`.
-3. Double-click `start_local.bat`. The browser opens at <http://127.0.0.1:8000>.
+The model is stored in %LOCALAPPDATA%\RobotSketchStudio\models, not in the
+program folder. Its SHA-256 is verified before it is installed.
 
-Optional models: double-click `setup_models_windows.bat` and choose background removal, Lineart AI, or both. Downloads are stored in `SKETCHARM_MODEL_DIR` and verified before use.
+### Run from source
 
-For a portable-lite onedir build, run `build_portable.ps1` after setup. The ZIP appears in `dist/` and includes XDoG, vectorization, Web UI/API, and MockRobot—not Qwen, CUDA, rembg, or model weights. A matching build is also produced by the Windows GitHub workflow.
+Install 64-bit Python 3.11 or newer, then:
 
-## Developer start
+1. Double-click setup_windows.bat once.
+2. Double-click start_local.bat; the browser opens and the server runs without
+   a terminal window.
+3. Download the AI weights in **Models**. Alternatively, double-click
+   setup_models_windows.bat and choose Clean AI Sketch.
 
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux/macOS: source .venv/bin/activate
-python -m pip install -e ".[dev]"
-cp .env.example .env          # Windows: copy .env.example .env
+For development:
+
+~~~powershell
+py -3.11 -m venv .venv
+.venv\Scripts\activate
+python -m pip install -e ".[dev,ai]"
 python -m robot_sketch_studio
-```
+~~~
 
-Then open <http://127.0.0.1:8000>. Processing starts only after you choose a file and press **Process image**.
+## Choosing a mode
 
-Quality checks:
+### Clean AI Sketch
 
-```bash
-ruff format --check .
-ruff check .
-pytest
-```
+Use this for normal portraits, people, and objects. The backend is a local
+PyTorch implementation of the architecture published by
+[Informative Drawings](https://github.com/carolineec/informative-drawings).
+SKETCHARM_DEVICE=auto selects CUDA when PyTorch can use it and CPU otherwise.
+The official author-hosted weights are downloaded only on request.
 
-Optional components are deliberately separate:
+### Artistic Remote
 
-```bash
-python -m pip install -e ".[background]"  # rembg + ONNX Runtime
-python -m pip install -e ".[ai]"          # controlnet_aux + PyTorch
-```
+Use this when another PC runs a larger Qwen-Image-Edit, FLUX Kontext, or ComfyUI
+workflow:
 
-Download weights explicitly after installing an extra:
+1. Select **Artistic Remote**.
+2. Choose **OpenAI-compatible image edit** or **ComfyUI workflow**.
+3. Enter the server URL and optional model/API key.
+4. Press **Test connection**, then process the photo normally.
 
-```bash
-robot-sketch-studio models list
-robot-sketch-studio models download rembg-u2net
-robot-sketch-studio models download rembg-u2net-human
-robot-sketch-studio models download lineart-realistic
-```
+The API key is sent in X-Remote-API-Key, held only in browser session storage
+and job memory, and never written to job metadata. Do not put secrets into the
+URL or commit them to the repository.
 
-The Web UI exposes the same downloader. Only fixed upstream registry entries are accepted, files are written atomically, and every download is checksum-verified. Missing extras never prevent `opencv_xdog` from running.
+For OpenAI-compatible servers, enter the API root such as
+http://render-pc:8000/v1; the server must implement GET /models and
+POST /images/edits with either b64_json or an image URL in the result.
 
-## Docker: CPU or NVIDIA
+For ComfyUI, export a workflow in API format, set its Load Image value to
+{{IMAGE}}, set the positive prompt text to {{PROMPT}}, and configure the
+workflow file on the Robot Sketch Studio PC:
 
-Copy `.env.example` to `.env` and set a long random `SKETCHARM_API_TOKEN`, because containers listen on `0.0.0.0`:
+~~~powershell
+setx SKETCHARM_COMFYUI_WORKFLOW "C:\workflows\plotter-edit-api.json"
+~~~
 
-```bash
-docker compose -f compose.cpu.yml up --build -d
-# or, on a configured NVIDIA Container Toolkit host:
-docker compose -f compose.nvidia.yml up --build -d
-```
+Restart Robot Sketch Studio after setting it. Full examples and the immutable
+prompt are in [docs/artistic-remote.md](docs/artistic-remote.md).
 
-Named volumes keep `/models`, `/data`, and `/results` outside the image. Move to another Windows/Linux machine by cloning the repository, recreating `.env`, selecting the appropriate Compose file, and starting it; application source changes are not required. Connect to `http://HOST-IP:8000` and supply the Bearer token in the UI or API.
+## Presets and output
 
-## Remote host and Tailscale
+| Preset | Target paths | Min path | Join distance | Curve tolerance |
+|---|---:|---:|---:|---:|
+| Minimal | 16 | 4.0 mm | 2.0 mm | 0.5 mm |
+| Balanced | 32 | 2.5 mm | 1.5 mm | 0.3 mm |
+| Detailed | 64 | 1.5 mm | 1.0 mm | 0.2 mm |
 
-`start_host.bat` generates a per-session token when one is not already set, binds to `0.0.0.0`, prints local URLs, and displays a security warning. For a stable deployment, set a secret token in the machine environment or `.env`.
+Every value is available under **Vector tuning in millimetres**. drawing.svg
+uses real mm dimensions, open unfilled paths, round caps, and cubic C commands.
+Import it into the software used for your DexArm and verify paper origin, scale,
+pen height, travel limits, and safety before running hardware.
 
-Do not port-forward this development server directly to the public internet. Prefer [Tailscale](https://tailscale.com/), restrict access to trusted devices, keep CORS origins narrow, and use a reverse proxy with TLS for any broader deployment. Full instructions are in [docs/remote-host.md](docs/remote-host.md).
+Runtime data is ignored by Git:
 
-On another PC, copy only `tools/remote_client.py` (Python 3 required) or use `send_to_host.bat` from a repository checkout:
+~~~text
+runtime/
+├── data/jobs/<uuid>/{input.*,metadata.json}
+├── results/<uuid>/{confidence.png,sketch.png,drawing.svg,trajectory.json}
+└── models/lineart/{sk_model.pth,sk_model2.pth}
+~~~
 
-```bash
-python tools/remote_client.py photo.jpg --url http://drawing-pc:8000 --token YOUR_TOKEN
-```
+## Use a powerful PC as the complete processing host
 
-The client submits the image, waits for completion, and downloads all three artifacts. See [the API/client guide](docs/api-client.md).
+On the powerful Windows PC:
+
+1. Run setup_windows.bat and download the AI model.
+2. Run start_host.bat.
+3. Copy the printed LAN/Tailscale URL and Bearer token.
+
+On another PC, open that URL, enter the token under **Remote host token**, and
+use the same UI. Or use the standard-library client:
+
+~~~powershell
+py -3 tools\remote_client.py photo.jpg --url http://drawing-pc:8000 --token YOUR_TOKEN
+~~~
+
+Do not expose the development server directly to the public internet. Prefer
+Tailscale or a trusted LAN. See [docs/remote-host.md](docs/remote-host.md) and
+[docs/api-client.md](docs/api-client.md).
 
 ## API
 
-Endpoints:
+Main endpoints:
 
-- `GET /health`
-- `GET /api/v1/capabilities`
-- `GET /api/v1/models`
-- `POST /api/v1/models/{model_id}/download`
-- `POST /api/v1/jobs`
-- `GET /api/v1/jobs/{job_id}`
-- `GET /api/v1/jobs/{job_id}/artifacts`
-- `GET /api/v1/jobs/{job_id}/artifacts/{name}`
-- `DELETE /api/v1/jobs/{job_id}`
+- GET /health
+- GET /api/v1/capabilities
+- GET /api/v1/models
+- POST /api/v1/models/{model_id}/download
+- POST /api/v1/remote/test
+- POST /api/v1/jobs
+- GET /api/v1/jobs/{job_id}
+- GET /api/v1/jobs/{job_id}/artifacts
+- DELETE /api/v1/jobs/{job_id}
 
-Example (omit `Authorization` in localhost mode):
+Example for a protected host:
 
-```bash
-curl -H "Authorization: Bearer $SKETCHARM_API_TOKEN" \
+~~~bash
+curl -H "Authorization: Bearer TOKEN" \
   -F "image=@portrait.jpg" \
-  -F 'options={"engine":"opencv_xdog","profile":"auto","paper":"a4_portrait","margin_mm":10}' \
+  -F 'options={"engine":"clean_ai","drawing_preset":"balanced"}' \
   http://HOST-IP:8000/api/v1/jobs
+~~~
 
-curl -H "Authorization: Bearer $SKETCHARM_API_TOKEN" \
-  http://HOST-IP:8000/api/v1/jobs/JOB_ID
-```
-
-OpenAPI documentation is served at `/docs`. The queue is bounded by `SKETCHARM_MAX_WORKERS + SKETCHARM_QUEUE_SIZE`; excess requests return HTTP 429. Uploads are decoded and verified, names are discarded for storage paths, UUID directories are used, and expired finished jobs are cleaned on startup.
-
-## Result layout
-
-Runtime locations are configurable and ignored by Git:
-
-```text
-runtime/
-├── data/jobs/<uuid>/
-│   ├── input.png
-│   └── metadata.json
-├── results/<uuid>/
-│   ├── sketch.png
-│   ├── drawing.svg
-│   └── trajectory.json
-└── models/
-    ├── rembg/models/<model>/<model>.onnx
-    └── lineart/{sk_model.pth,sk_model2.pth}
-```
-
-`drawing.svg` uses physical `mm` dimensions, a matching `viewBox`, `fill="none"`, and open path centrelines. `trajectory.json` contains identical ordered points, page metadata, and distance/time statistics.
+Interactive OpenAPI documentation is at /docs. Host mode requires
+SKETCHARM_API_TOKEN; the bounded queue returns HTTP 429 when full. Uploads are
+decoded and verified, storage uses UUID directories, and expired completed jobs
+are removed on startup.
 
 ## Configuration
 
-All requested settings are documented in `.env.example`: `SKETCHARM_HOST`, `SKETCHARM_PORT`, `SKETCHARM_API_TOKEN`, `SKETCHARM_DEVICE`, `SKETCHARM_MODEL_DIR`, `SKETCHARM_DATA_DIR`, `SKETCHARM_MAX_UPLOAD_MB`, `SKETCHARM_JOB_TTL_HOURS`, `SKETCHARM_CORS_ORIGINS`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_API_KEY`. `SKETCHARM_RESULTS_DIR`, worker count, and queue size are additional deployment controls.
+Copy .env.example to .env. Important settings:
 
-The OpenAI-compatible provider is only an extension point for future Ollama, vLLM, llama.cpp, or LocalAI work. Qwen and Ollama are not required by the core pipeline.
+- SKETCHARM_HOST, SKETCHARM_PORT, SKETCHARM_API_TOKEN
+- SKETCHARM_DEVICE=auto|cpu|cuda
+- SKETCHARM_MODEL_DIR, SKETCHARM_DATA_DIR, SKETCHARM_RESULTS_DIR
+- SKETCHARM_MAX_UPLOAD_MB, SKETCHARM_JOB_TTL_HOURS
+- SKETCHARM_MAX_WORKERS, SKETCHARM_QUEUE_SIZE
+- SKETCHARM_CORS_ORIGINS
+- SKETCHARM_COMFYUI_WORKFLOW
 
-## Architecture and future adapters
+CPU and NVIDIA Docker Compose files remain available for hosting. Model weights
+are not committed or bundled; the fixed registry verifies each download.
 
-The code defines `SketchEngine`, `BackgroundRemovalProvider`, `ComputeProvider`, `LLMProvider`, and `RobotAdapter`. Only `MockRobot` is active. Serial, G-code, ROS, vendor SDK, ONNX Runtime/DirectML, SAM 2, Qwen3-VL, and a Tauri desktop client are future work. See [architecture](docs/architecture.md), [vectorization](docs/vectorization.md), and [robot adapters](docs/robot-adapters.md).
+## Quality checks
 
-## Acknowledgements and licensing
+~~~powershell
+ruff format --check .
+ruff check .
+pytest
+~~~
 
-Robot Sketch Studio source is MIT licensed, copyright © 2026 maggogerka. Third-party libraries and optional models retain their own copyrights and licenses; they are not relicensed by this project. See [docs/model-licenses.md](docs/model-licenses.md) for the authors, licenses, and download behavior of FastAPI, OpenCV, scikit-image, rembg/U²-Net, ControlNet annotators, and other components.
+The deterministic test suite covers API jobs, verified model downloads,
+hysteresis/vector cleanup, graph edge coverage, junction handling, path limits,
+cubic Bézier output, presets, remote image-edit requests, and pipeline output.
 
-**Developed by [maggogerka](https://github.com/maggogerka).**
+Known limitations: AI quality still depends on the photograph and pretrained
+model domain; very cluttered or occluded scenes can require Artistic Remote or
+manual cleanup. The ComfyUI adapter requires a user-supplied API-format workflow.
+ONNX/DirectML and real robot control are intentionally outside this release.
+
+See [architecture](docs/architecture.md), [vectorization](docs/vectorization.md),
+[model licenses](docs/model-licenses.md), and [roadmap](docs/roadmap.md).
+
+Robot Sketch Studio source is MIT licensed. Third-party code and separately
+downloaded weights keep their upstream licenses.

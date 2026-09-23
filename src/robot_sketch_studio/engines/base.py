@@ -22,3 +22,8 @@ class SketchEngine(ABC):
     def render(self, rgb: np.ndarray, options: ProcessingOptions) -> np.ndarray:
         """Return an uint8 image with black ink on a white background."""
         raise NotImplementedError
+
+    def render_confidence(self, rgb: np.ndarray, options: ProcessingOptions) -> np.ndarray:
+        """Return float32 ink confidence in the 0..1 range."""
+        rendered = self.render(rgb, options)
+        return np.clip(1.0 - rendered.astype(np.float32) / 255.0, 0.0, 1.0)

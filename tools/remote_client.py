@@ -20,8 +20,11 @@ def api_root(value: str) -> str:
     return root if root.endswith("/api/v1") else root + "/api/v1"
 
 
-def headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"} if token else {}
+def headers(token: str, remote_api_key: str = "") -> dict[str, str]:
+    result = {"Authorization": f"Bearer {token}"} if token else {}
+    if remote_api_key:
+        result["X-Remote-API-Key"] = remote_api_key
+    return result
 
 
 def request_json(
@@ -29,8 +32,9 @@ def request_json(
     token: str,
     data: bytes | None = None,
     content_type: str | None = None,
+    remote_api_key: str = "",
 ) -> dict:
-    request_headers = headers(token)
+    request_headers = headers(token, remote_api_key)
     if content_type:
         request_headers["Content-Type"] = content_type
     request = urllib.request.Request(
@@ -85,8 +89,10 @@ def main() -> int:
     parser.add_argument("--token", default=os.getenv("SKETCHARM_API_TOKEN", ""))
     parser.add_argument("--output", type=Path, default=Path("robot-sketch-result"))
     parser.add_argument("--profile", default="auto")
-    parser.add_argument("--engine", default="opencv_xdog")
+    parser.add_argument("--engine", default="clean_ai")
+    parser.add_argument("--preset", default="balanced")
     parser.add_argument("--background", default="off")
+    parser.add_argument("--remote-api-key", default=os.getenv("SKETCHARM_REMOTE_API_KEY", ""))
     parser.add_argument("--options", default="{}", help="extra options as a JSON object")
     parser.add_argument("--timeout", type=float, default=300)
     args = parser.parse_args()
@@ -103,12 +109,19 @@ def main() -> int:
     options = {
         "profile": args.profile,
         "engine": args.engine,
+        "drawing_preset": args.preset,
         "background": args.background,
         **extra,
     }
     root = api_root(args.url)
     body, content_type = multipart(args.image, options)
-    created = request_json(f"{root}/jobs", args.token, body, content_type)
+    created = request_json(
+        f"{root}/jobs",
+        args.token,
+        body,
+        content_type,
+        remote_api_key=args.remote_api_key,
+    )
     job_id = created["id"]
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:

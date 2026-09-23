@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import threading
 import time
 import webbrowser
@@ -51,6 +52,12 @@ def _models_command(settings: Settings, action: str, model_id: str | None) -> in
 
 
 def main() -> None:
+    # pythonw and windowed PyInstaller builds do not expose standard streams;
+    # give Uvicorn's logging handlers a safe sink instead of crashing at start.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
     defaults = Settings.from_env()
     parser = argparse.ArgumentParser(description=f"Robot Sketch Studio v{__version__}")
     parser.add_argument("--host", default=defaults.host)

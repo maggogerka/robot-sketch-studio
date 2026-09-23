@@ -21,13 +21,18 @@ from robot_sketch_studio.models import (
     ArtifactInfo,
     ArtifactList,
     Capabilities,
+    DrawingPreset,
     ImageProfile,
     ProcessingOptions,
+    RemoteBackendName,
+    RemoteConnectionRequest,
 )
+from robot_sketch_studio.providers import create_image_edit_provider
 
 STATIC_DIR = Path(__file__).with_name("static")
 FORMAT_SUFFIXES = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
 MEDIA_TYPES = {
+    "confidence.png": "image/png",
     "sketch.png": "image/png",
     "drawing.svg": "image/svg+xml",
     "trajectory.json": "application/json",
@@ -79,7 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_origins=config.cors_origins,
             allow_credentials=False,
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Authorization", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type", "X-Remote-API-Key"],
         )
 
     @app.middleware("http")
@@ -113,8 +118,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             formats=["jpg", "png", "webp"],
             paper_presets=["a4_portrait", "a4_landscape", "custom"],
             image_profiles=[profile.value for profile in ImageProfile],
+            drawing_presets=[preset.value for preset in DrawingPreset],
+            remote_backends=[backend.value for backend in RemoteBackendName],
             host_mode=config.host_mode,
         )
+
+    @app.post("/api/v1/remote/test")
+    def test_remote_connection(payload: RemoteConnectionRequest, request: Request):
+        provider = create_image_edit_provider(
+            payload.backend,
+            payload.url,
+            payload.model,
+            request.headers.get("x-remote-api-key", ""),
+            config.comfyui_workflow,
+        )
+        try:
+            return provider.test_connection()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @app.get("/api/v1/models")
     def list_models() -> dict[str, object]:
@@ -135,7 +156,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Model not found") from exc
 
     @app.post("/api/v1/jobs", status_code=202)
-    async def create_job(image: UploadFile = File(...), options: str = Form(default="{}")):
+    async def create_job(
+        request: Request,
+        image: UploadFile = File(...),
+        options: str = Form(default="{}"),
+    ):
         content_length = image.headers.get("content-length")
         limit = config.max_upload_mb * 1024 * 1024
         if content_length and int(content_length) > limit:
@@ -156,7 +181,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=422, detail=f"Invalid processing options: {exc}"
             ) from exc
         try:
-            return manager.submit(data, image.filename or f"upload{suffix}", suffix, parsed_options)
+            return manager.submit(
+                data,
+                image.filename or f"upload{suffix}",
+                suffix,
+                parsed_options,
+                remote_api_key=request.headers.get("x-remote-api-key", ""),
+            )
         except QueueFullError as exc:
             raise HTTPException(
                 status_code=429, detail=str(exc), headers={"Retry-After": "2"}

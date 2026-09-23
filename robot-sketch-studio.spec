@@ -17,8 +17,6 @@ analysis = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        "torch",
-        "controlnet_aux",
         "rembg",
         "onnxruntime",
         "pytest",
@@ -36,7 +34,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="RobotSketchStudio",
-    console=True,
+    console=False,
 )
 collection = COLLECT(
     exe,

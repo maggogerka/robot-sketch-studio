@@ -2,6 +2,8 @@ services:
   sketch-studio:
     build:
       context: .
+      args:
+        INSTALL_EXTRAS: ai
     ports:
       - "8000:8000"
     environment:
@@ -22,4 +24,3 @@ volumes:
   sketch-models:
   sketch-data:
   sketch-results:
-

@@ -121,6 +121,7 @@ def test_vectorize_removes_short_component_and_keeps_coordinates_inside_page(tmp
     assert root.attrib["viewBox"] == "0 0 120 100"
     paths = [element for element in root.iter() if element.tag.endswith("}path")]
     assert paths and all(element.attrib.get("fill") == "none" for element in paths)
+    assert all("C " in element.attrib["d"] for element in paths)
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["units"] == "mm"
     assert len(payload["strokes"]) == result.stats.stroke_count
