@@ -1,4 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
+const UI_VERSION = "0.3.1";
 const input = $("#imageInput");
 const dropZone = $("#dropZone");
 const processButton = $("#processButton");
@@ -8,6 +9,12 @@ let selectedFile = null;
 let currentJob = null;
 let objectUrls = [];
 let previewUrls = {};
+let backendReady = false;
+let backendError = "Checking backend compatibility...";
+
+function updateProcessAvailability() {
+  processButton.disabled = !selectedFile || !backendReady;
+}
 
 $("#apiToken").value = sessionStorage.getItem("robotSketchApiToken") || "";
 $("#apiToken").addEventListener("input", (event) => {
@@ -61,9 +68,9 @@ function selectFile(file) {
   selectedFile = file;
   $("#fileName").textContent = file.name;
   $("#sourcePreview").src = URL.createObjectURL(file);
-  processButton.disabled = false;
-  showError("");
-  setStatus("Ready to process", 0, "idle");
+  updateProcessAvailability();
+  showError(backendReady ? "" : backendError);
+  if (backendReady) setStatus("Ready to process", 0, "idle");
 }
 
 input.addEventListener("change", () => selectFile(input.files[0]));
@@ -171,6 +178,35 @@ async function apiError(response) {
     return typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
   } catch (_) {
     return `Request failed (${response.status})`;
+  }
+}
+
+async function verifyBackend() {
+  backendReady = false;
+  updateProcessAvailability();
+  try {
+    const response = await fetch("/api/v1/capabilities", {
+      cache: "no-store",
+      headers: authHeaders()
+    });
+    if (!response.ok) throw new Error(await apiError(response));
+    const capabilities = await response.json();
+    const presets = capabilities.drawing_presets || [];
+    const modes = capabilities.vectorization_modes || [];
+    if (!presets.includes("dexarm_fidelity") || !modes.includes("plotter_fidelity")) {
+      throw new Error(
+        `Interface v${UI_VERSION} is connected to backend v${capabilities.version || "unknown"}. ` +
+        "Close the old Robot Sketch Studio process, start v0.3.1, then press Ctrl+F5."
+      );
+    }
+    backendReady = true;
+    backendError = "";
+    showError("");
+    updateProcessAvailability();
+    if (selectedFile) setStatus("Ready to process", 0, "idle");
+  } catch (error) {
+    backendError = error.message || String(error);
+    showError(backendError);
   }
 }
 
@@ -388,5 +424,9 @@ $("#simulateButton").addEventListener("click", () => {
 });
 
 $("#refreshModels").addEventListener("click", refreshModels);
-$("#apiToken").addEventListener("change", refreshModels);
+$("#apiToken").addEventListener("change", () => {
+  verifyBackend();
+  refreshModels();
+});
+verifyBackend();
 refreshModels();

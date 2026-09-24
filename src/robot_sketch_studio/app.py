@@ -102,7 +102,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     content={"detail": "A valid Bearer API token is required"},
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-        return await call_next(request)
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            # A stale v0.3.1 page talking to a v0.3.0 process produces invalid
+            # processing options. UI assets must always match the running API.
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+        return response
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
