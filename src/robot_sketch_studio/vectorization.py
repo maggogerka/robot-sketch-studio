@@ -4,7 +4,7 @@ import json
 import math
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -13,7 +13,12 @@ from skimage.filters import apply_hysteresis_threshold
 from skimage.morphology import binary_closing, disk, skeletonize
 
 from robot_sketch_studio import __version__
-from robot_sketch_studio.models import DrawingStats, ProcessingOptions
+from robot_sketch_studio.bezier_fit import PathCommand
+from robot_sketch_studio.models import (
+    DrawingStats,
+    ProcessingOptions,
+    VectorizationMode,
+)
 
 Pixel = tuple[int, int]
 Point = tuple[float, float]
@@ -157,6 +162,23 @@ def rdp(points: list[Point], epsilon: float) -> list[Point]:
 
 def optimize_stroke_order(lines: list[Polyline], origin: Point = (0.0, 0.0)) -> list[Polyline]:
     remaining = [line[:] for line in lines if len(line) >= 2]
+    if len(remaining) > 400:
+        # A deterministic spatial sweep avoids quadratic work for detailed jobs.
+        remaining.sort(
+            key=lambda line: (
+                int(min(line[0][1], line[-1][1]) // 8),
+                min(line[0][0], line[-1][0]),
+                max(line[0][0], line[-1][0]),
+            )
+        )
+        ordered: list[Polyline] = []
+        cursor = origin
+        for line in remaining:
+            if math.dist(cursor, line[-1]) < math.dist(cursor, line[0]):
+                line.reverse()
+            ordered.append(line)
+            cursor = line[-1]
+        return ordered
     ordered: list[Polyline] = []
     cursor = origin
     while remaining:
@@ -192,15 +214,13 @@ def _gap_has_support(
     free_gap_px: float,
 ) -> bool:
     distance = math.dist(first, second)
-    if distance <= max(2.0, free_gap_px):
-        return True
-    samples = max(3, int(math.ceil(distance)) + 1)
+    samples = max(3, int(math.ceil(distance)) * 2 + 1)
     yy = np.rint(np.linspace(first[0], second[0], samples)).astype(int)
     xx = np.rint(np.linspace(first[1], second[1], samples)).astype(int)
     values = confidence[yy, xx]
     # Refuse a shortcut through a genuinely empty region, while allowing weak
     # model responses to bridge a broken semantic contour.
-    return float(np.mean(values >= low_threshold * 0.35)) >= 0.25
+    return bool(np.all(values >= low_threshold * 0.35))
 
 
 def _can_join(
@@ -343,6 +363,11 @@ class VectorResult:
     height_mm: float
     stats: DrawingStats
     preview: np.ndarray
+    commands: list[list[PathCommand]] | None = None
+    pen_width_mm: float | None = None
+    vector_preview: np.ndarray | None = None
+    difference_overlay: np.ndarray | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 def _as_confidence(sketch: np.ndarray) -> np.ndarray:
@@ -357,6 +382,10 @@ def _as_confidence(sketch: np.ndarray) -> np.ndarray:
 
 
 def vectorize(sketch: np.ndarray, options: ProcessingOptions) -> VectorResult:
+    if options.vectorization_mode == VectorizationMode.PLOTTER_FIDELITY:
+        from robot_sketch_studio.fidelity import vectorize_fidelity
+
+        return vectorize_fidelity(sketch, options)
     confidence = _as_confidence(sketch)
     height_px, width_px = confidence.shape
     page_width, page_height = options.page_dimensions
@@ -406,8 +435,9 @@ def vectorize(sketch: np.ndarray, options: ProcessingOptions) -> VectorResult:
         values = [softened[y, x] for y, x in path]
         return polyline_length(path) * (0.5 + float(np.mean(values)))
 
-    pixel_paths.sort(key=importance, reverse=True)
-    pixel_paths = pixel_paths[: options.target_paths]
+    if options.vectorization_mode == VectorizationMode.MINIMAL:
+        pixel_paths.sort(key=importance, reverse=True)
+        pixel_paths = pixel_paths[: options.target_paths]
 
     lines: list[Polyline] = []
     for path in pixel_paths:
@@ -437,8 +467,40 @@ def vectorize(sketch: np.ndarray, options: ProcessingOptions) -> VectorResult:
         average_path_length_mm=round(drawing_length / len(lines), 3) if lines else 0.0,
         curve_segment_count=sum(len(path) for path in curves),
     )
-    preview = np.where(ink, 0, 255).astype(np.uint8)
-    return VectorResult(lines, curves, page_width, page_height, stats, preview)
+    rendered = np.zeros_like(ink, dtype=np.uint8)
+    thickness = max(1, int(round(options.stroke_width_mm / max(scale, 1e-9))))
+    radius = max(0, thickness // 2)
+    for line in lines:
+        points = np.asarray(
+            [
+                (
+                    int(round((x - offset_x) / scale)),
+                    int(round((y - offset_y) / scale)),
+                )
+                for x, y in line
+            ],
+            dtype=np.int32,
+        )
+        cv2.polylines(rendered, [points], False, 1, thickness, cv2.LINE_8)
+        if radius:
+            cv2.circle(rendered, tuple(points[0]), radius, 1, -1)
+            cv2.circle(rendered, tuple(points[-1]), radius, 1, -1)
+    from robot_sketch_studio.fidelity import _metrics, _preview_images
+
+    metrics = _metrics(ink, rendered.astype(bool), scale)
+    stats = stats.model_copy(update={**metrics, "pen_lifts": max(0, len(lines) - 1)})
+    preview, vector_preview, difference = _preview_images(ink, rendered.astype(bool))
+    return VectorResult(
+        lines=lines,
+        curves=curves,
+        width_mm=page_width,
+        height_mm=page_height,
+        stats=stats,
+        preview=preview,
+        pen_width_mm=options.stroke_width_mm,
+        vector_preview=vector_preview,
+        difference_overlay=difference,
+    )
 
 
 def _number(value: float) -> str:
@@ -446,6 +508,11 @@ def _number(value: float) -> str:
 
 
 def write_svg(result: VectorResult, options: ProcessingOptions, destination: Path) -> None:
+    if result.commands is not None:
+        from robot_sketch_studio.fidelity import write_fidelity_svg
+
+        write_fidelity_svg(result, destination)
+        return
     ET.register_namespace("", "http://www.w3.org/2000/svg")
     root = ET.Element(
         "{http://www.w3.org/2000/svg}svg",
@@ -489,6 +556,11 @@ def write_svg(result: VectorResult, options: ProcessingOptions, destination: Pat
 
 
 def write_trajectory(result: VectorResult, options: ProcessingOptions, destination: Path) -> None:
+    if result.commands is not None:
+        from robot_sketch_studio.fidelity import write_fidelity_trajectory
+
+        write_fidelity_trajectory(result, options, destination)
+        return
     strokes = []
     for index, (line, path_curves) in enumerate(zip(result.lines, result.curves, strict=True)):
         strokes.append(

@@ -1,4 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
+const UI_VERSION = "0.3.1";
 const input = $("#imageInput");
 const dropZone = $("#dropZone");
 const processButton = $("#processButton");
@@ -7,6 +8,13 @@ const errorBox = $("#error");
 let selectedFile = null;
 let currentJob = null;
 let objectUrls = [];
+let previewUrls = {};
+let backendReady = false;
+let backendError = "Checking backend compatibility...";
+
+function updateProcessAvailability() {
+  processButton.disabled = !selectedFile || !backendReady;
+}
 
 $("#apiToken").value = sessionStorage.getItem("robotSketchApiToken") || "";
 $("#apiToken").addEventListener("input", (event) => {
@@ -60,9 +68,9 @@ function selectFile(file) {
   selectedFile = file;
   $("#fileName").textContent = file.name;
   $("#sourcePreview").src = URL.createObjectURL(file);
-  processButton.disabled = false;
-  showError("");
-  setStatus("Ready to process", 0, "idle");
+  updateProcessAvailability();
+  showError(backendReady ? "" : backendError);
+  if (backendReady) setStatus("Ready to process", 0, "idle");
 }
 
 input.addEventListener("change", () => selectFile(input.files[0]));
@@ -84,6 +92,9 @@ for (const name of ["detail", "threshold"]) {
     $(`#${name}Value`).value = event.target.value;
   });
 }
+$("#coverage").addEventListener("input", (event) => {
+  $("#coverageValue").value = `${event.target.value}%`;
+});
 $("#paper").addEventListener("change", (event) => {
   const custom = event.target.value === "custom";
   $("#pageWidth").disabled = !custom;
@@ -93,9 +104,10 @@ $("#paper").addEventListener("change", (event) => {
 });
 
 const presets = {
-  minimal: { targetPaths: 16, minPath: 4, joinDistance: 2, joinAngle: 20, minFeature: 1.2, curveTolerance: 0.5 },
-  balanced: { targetPaths: 32, minPath: 2.5, joinDistance: 1.5, joinAngle: 25, minFeature: 0.8, curveTolerance: 0.3 },
-  detailed: { targetPaths: 64, minPath: 1.5, joinDistance: 1, joinAngle: 30, minFeature: 0.5, curveTolerance: 0.2 }
+  dexarm_fidelity: { vectorMode: "plotter_fidelity", penWidth: 0.5, coverage: 97, fillStrategy: "contour", minPath: 0.25, joinDistance: 0.35, joinAngle: 25, minFeature: 0.15, curveTolerance: 0.08, maxPlotterPaths: 3000 },
+  minimal: { vectorMode: "minimal", targetPaths: 16, minPath: 4, joinDistance: 2, joinAngle: 20, minFeature: 1.2, curveTolerance: 0.5 },
+  balanced: { vectorMode: "centerline", targetPaths: 32, minPath: 2.5, joinDistance: 1.5, joinAngle: 25, minFeature: 0.8, curveTolerance: 0.3 },
+  detailed: { vectorMode: "centerline", targetPaths: 64, minPath: 1.5, joinDistance: 1, joinAngle: 30, minFeature: 0.5, curveTolerance: 0.2 }
 };
 
 function applyPreset(name) {
@@ -104,9 +116,26 @@ function applyPreset(name) {
   Object.entries(values).forEach(([id, value]) => {
     document.querySelector("#" + id).value = value;
   });
+  $("#coverageValue").value = `${$("#coverage").value}%`;
+  updateVectorMode();
 }
 
 $("#drawingPreset").addEventListener("change", (event) => applyPreset(event.target.value));
+function updateVectorMode() {
+  const fidelity = $("#vectorMode").value === "plotter_fidelity";
+  const minimal = $("#vectorMode").value === "minimal";
+  $("#targetPaths").disabled = !minimal;
+  $("#targetPathsField").classList.toggle("disabled-field", !minimal);
+  $("#targetPathsHint").textContent = fidelity
+    ? "Количество траекторий определяется автоматически для сохранения рисунка."
+    : minimal
+      ? "Жёсткий предел для художественного упрощения."
+      : "В режиме центральных линий ограничение не применяется.";
+  $("#fillStrategy").disabled = !fidelity;
+  $("#maxPlotterPaths").disabled = !fidelity;
+}
+$("#vectorMode").addEventListener("change", updateVectorMode);
+updateVectorMode();
 $("#engine").addEventListener("change", (event) => {
   $("#remoteSettings").hidden = event.target.value !== "artistic_remote";
 });
@@ -117,9 +146,16 @@ function options() {
     background: $("#background").value,
     profile: $("#profile").value,
     drawing_preset: $("#drawingPreset").value,
+    vectorization_mode: $("#vectorMode").value,
     detail: Number($("#detail").value),
     threshold: Number($("#threshold").value),
     target_paths: Number($("#targetPaths").value),
+    pen_width_mm: Number($("#penWidth").value),
+    ink_coverage_target: Number($("#coverage").value) / 100,
+    fill_strategy: $("#fillStrategy").value,
+    maximum_plotter_paths: Number($("#maxPlotterPaths").value),
+    preserve_short_details: true,
+    generate_difference_preview: true,
     minimum_path_length_mm: Number($("#minPath").value),
     join_distance_mm: Number($("#joinDistance").value),
     maximum_join_angle_deg: Number($("#joinAngle").value),
@@ -129,7 +165,7 @@ function options() {
     page_width_mm: Number($("#pageWidth").value),
     page_height_mm: Number($("#pageHeight").value),
     margin_mm: Number($("#margin").value),
-    stroke_width_mm: Number($("#strokeWidth").value),
+    stroke_width_mm: Number($("#penWidth").value),
     remote_backend: $("#remoteBackend").value,
     remote_url: $("#engine").value === "artistic_remote" ? $("#remoteUrl").value.trim() : null,
     remote_model: $("#remoteModel").value.trim() || null
@@ -142,6 +178,35 @@ async function apiError(response) {
     return typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
   } catch (_) {
     return `Request failed (${response.status})`;
+  }
+}
+
+async function verifyBackend() {
+  backendReady = false;
+  updateProcessAvailability();
+  try {
+    const response = await fetch("/api/v1/capabilities", {
+      cache: "no-store",
+      headers: authHeaders()
+    });
+    if (!response.ok) throw new Error(await apiError(response));
+    const capabilities = await response.json();
+    const presets = capabilities.drawing_presets || [];
+    const modes = capabilities.vectorization_modes || [];
+    if (!presets.includes("dexarm_fidelity") || !modes.includes("plotter_fidelity")) {
+      throw new Error(
+        `Interface v${UI_VERSION} is connected to backend v${capabilities.version || "unknown"}. ` +
+        "Close the old Robot Sketch Studio process, start v0.3.1, then press Ctrl+F5."
+      );
+    }
+    backendReady = true;
+    backendError = "";
+    showError("");
+    updateProcessAvailability();
+    if (selectedFile) setStatus("Ready to process", 0, "idle");
+  } catch (error) {
+    backendError = error.message || String(error);
+    showError(backendError);
   }
 }
 
@@ -258,12 +323,20 @@ async function showResult(job) {
   currentJob = job;
   objectUrls.forEach(URL.revokeObjectURL);
   objectUrls = [];
-  const sketchBlob = await artifactBlob("sketch.png");
-  const sketchUrl = URL.createObjectURL(sketchBlob);
-  objectUrls.push(sketchUrl);
-  $("#sketchPreview").src = sketchUrl;
-
-  const svgBlob = await artifactBlob("drawing.svg");
+  const [sketchBlob, vectorBlob, differenceBlob, svgBlob] = await Promise.all([
+    artifactBlob("sketch.png"),
+    artifactBlob("vector-preview.png"),
+    artifactBlob("difference-overlay.png"),
+    artifactBlob("drawing.svg")
+  ]);
+  previewUrls = {
+    sketch: URL.createObjectURL(sketchBlob),
+    vector: URL.createObjectURL(vectorBlob),
+    difference: URL.createObjectURL(differenceBlob)
+  };
+  objectUrls.push(...Object.values(previewUrls));
+  $("#sketchPreview").src = previewUrls.sketch;
+  $("#resultPreview").src = previewUrls.vector;
   const svgText = await svgBlob.text();
   $("#svgPreview").innerHTML = svgText;
   const stats = job.stats;
@@ -271,12 +344,26 @@ async function showResult(job) {
   $("#statDraw").textContent = `${stats.drawing_length_mm.toFixed(1)} mm`;
   $("#statTravel").textContent = `${stats.travel_length_mm.toFixed(1)} mm`;
   $("#statTime").textContent = `${stats.estimated_time_seconds.toFixed(1)} s`;
+  $("#statSimilarity").textContent = `${(stats.ink_iou * 100).toFixed(1)}%`;
+  $("#statRecall").textContent = `${(stats.ink_recall * 100).toFixed(1)}%`;
+  $("#statExtra").textContent = `${((1 - stats.ink_precision) * 100).toFixed(1)}%`;
+  $("#statLifts").textContent = stats.pen_lifts.toLocaleString();
   $("#simulateButton").disabled = !stats.stroke_count;
   document.querySelectorAll(".download").forEach((button) => { button.disabled = false; });
   $("#warnings").hidden = !job.warnings.length;
   $("#warnings").textContent = job.warnings.join(" ");
   setStatus("Completed", 100, "done");
 }
+
+document.querySelectorAll("[data-preview]").forEach((button) => button.addEventListener("click", () => {
+  const url = previewUrls[button.dataset.preview];
+  if (!url) return;
+  $("#resultRaster").hidden = false;
+  $("#svgPreview").hidden = true;
+  $("#resultPreview").src = url;
+  document.querySelectorAll("[data-preview]").forEach((item) => item.classList.remove("active"));
+  button.classList.add("active");
+}));
 
 processButton.addEventListener("click", async () => {
   if (!selectedFile) return;
@@ -318,6 +405,8 @@ document.querySelectorAll(".download").forEach((button) => button.addEventListen
 }));
 
 $("#simulateButton").addEventListener("click", () => {
+  $("#resultRaster").hidden = true;
+  $("#svgPreview").hidden = false;
   const paths = [...document.querySelectorAll("#svgPreview path")];
   let delay = 0;
   paths.forEach((path) => {
@@ -335,5 +424,9 @@ $("#simulateButton").addEventListener("click", () => {
 });
 
 $("#refreshModels").addEventListener("click", refreshModels);
-$("#apiToken").addEventListener("change", refreshModels);
+$("#apiToken").addEventListener("change", () => {
+  verifyBackend();
+  refreshModels();
+});
+verifyBackend();
 refreshModels();

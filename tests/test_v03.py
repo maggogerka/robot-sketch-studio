@@ -10,7 +10,12 @@ import pytest
 from PIL import Image
 
 from robot_sketch_studio.engines.lineart_ai import _build_generator
-from robot_sketch_studio.models import DrawingPreset, ProcessingOptions
+from robot_sketch_studio.models import (
+    DrawingPreset,
+    ProcessingOptions,
+    SketchEngineName,
+    VectorizationMode,
+)
 from robot_sketch_studio.providers.image_edit import (
     ARTISTIC_PROMPT,
     ComfyUIImageEditProvider,
@@ -28,6 +33,9 @@ def test_presets_apply_physical_defaults_and_allow_overrides():
     assert detailed.target_paths == 64
     assert detailed.curve_fit_tolerance_mm == 0.2
     assert custom.target_paths == 23
+    legacy_xdog = ProcessingOptions(engine=SketchEngineName.OPENCV_XDOG)
+    assert legacy_xdog.drawing_preset == DrawingPreset.BALANCED
+    assert legacy_xdog.vectorization_mode == VectorizationMode.CENTERLINE
 
 
 def test_vectorizer_limits_paths_and_fits_cubic_curves():
@@ -42,6 +50,7 @@ def test_vectorizer_limits_paths_and_fits_cubic_curves():
             minimum_feature_size_mm=0.1,
             join_distance_mm=0,
             curve_fit_tolerance_mm=0.2,
+            vectorization_mode=VectorizationMode.MINIMAL,
         ),
     )
     assert result.stats.stroke_count == 4

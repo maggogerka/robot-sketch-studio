@@ -6,8 +6,10 @@ browser / API
   → optional BackgroundRemovalProvider
   → CleanAIEngine | Artistic Remote ImageEditProvider | XDoG fallback
   → soft confidence map
-  → hysteresis / skeleton graph / smart joining / cubic fitting
-  → confidence PNG + cleaned PNG + SVG + trajectory JSON
+  → vector mode: Plotter Fidelity | centreline | minimal
+  → hysteresis / topology / physical fill / bounded cubic fitting
+  → physical raster comparison and bounded refinement
+  → six artifacts including vector preview and difference overlay
 ~~~
 
 SketchEngine isolates local raster-to-line inference. ImageEditProvider isolates
@@ -15,6 +17,12 @@ remote OpenAI-compatible and ComfyUI backends, so a future CLIPasso or SLD
 implementation can be registered without changing the GUI contract.
 BackgroundRemovalProvider and ComputeProvider remain separate. Only MockRobot
 exists; no production hardware adapter is enabled.
+
+Plotter Fidelity lives in a separate module from the legacy centreline
+vectorizer. It works per connected-component ROI, uses a distance transform for
+wide ink, and renders exact trajectories back at the physical pen width.
+Error-bounded Bézier fitting is also isolated, allowing future vector backends
+to reuse the exporter without changing the UI or job API.
 
 The Clean AI backend implements the official Informative Drawings generator
 architecture locally and loads checksum-pinned official weights. PyTorch is

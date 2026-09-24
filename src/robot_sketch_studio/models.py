@@ -32,9 +32,22 @@ class ImageProfile(StrEnum):
 
 
 class DrawingPreset(StrEnum):
+    DEXARM_FIDELITY = "dexarm_fidelity"
     MINIMAL = "minimal"
     BALANCED = "balanced"
     DETAILED = "detailed"
+
+
+class VectorizationMode(StrEnum):
+    PLOTTER_FIDELITY = "plotter_fidelity"
+    CENTERLINE = "centerline"
+    MINIMAL = "minimal"
+
+
+class FillStrategy(StrEnum):
+    CONTOUR = "contour"
+    PARALLEL = "parallel"
+    NONE = "none"
 
 
 class RemoteBackendName(StrEnum):
@@ -48,8 +61,22 @@ class PaperPreset(StrEnum):
     CUSTOM = "custom"
 
 
-PRESET_DEFAULTS: dict[DrawingPreset, dict[str, float | int]] = {
+PRESET_DEFAULTS: dict[DrawingPreset, dict[str, float | int | bool | StrEnum]] = {
+    DrawingPreset.DEXARM_FIDELITY: {
+        "vectorization_mode": VectorizationMode.PLOTTER_FIDELITY,
+        "pen_width_mm": 0.5,
+        "ink_coverage_target": 0.97,
+        "fill_strategy": FillStrategy.CONTOUR,
+        "minimum_path_length_mm": 0.25,
+        "minimum_feature_size_mm": 0.15,
+        "curve_fit_tolerance_mm": 0.08,
+        "join_distance_mm": 0.35,
+        "maximum_join_angle_deg": 25.0,
+        "maximum_plotter_paths": 3000,
+        "preserve_short_details": True,
+    },
     DrawingPreset.MINIMAL: {
+        "vectorization_mode": VectorizationMode.MINIMAL,
         "target_paths": 16,
         "minimum_path_length_mm": 4.0,
         "join_distance_mm": 2.0,
@@ -58,6 +85,7 @@ PRESET_DEFAULTS: dict[DrawingPreset, dict[str, float | int]] = {
         "curve_fit_tolerance_mm": 0.5,
     },
     DrawingPreset.BALANCED: {
+        "vectorization_mode": VectorizationMode.CENTERLINE,
         "target_paths": 32,
         "minimum_path_length_mm": 2.5,
         "join_distance_mm": 1.5,
@@ -66,6 +94,7 @@ PRESET_DEFAULTS: dict[DrawingPreset, dict[str, float | int]] = {
         "curve_fit_tolerance_mm": 0.3,
     },
     DrawingPreset.DETAILED: {
+        "vectorization_mode": VectorizationMode.CENTERLINE,
         "target_paths": 64,
         "minimum_path_length_mm": 1.5,
         "join_distance_mm": 1.0,
@@ -82,7 +111,8 @@ class ProcessingOptions(BaseModel):
     engine: SketchEngineName = SketchEngineName.CLEAN_AI
     background: BackgroundMode = BackgroundMode.OFF
     profile: ImageProfile = ImageProfile.AUTO
-    drawing_preset: DrawingPreset = DrawingPreset.BALANCED
+    drawing_preset: DrawingPreset = DrawingPreset.DEXARM_FIDELITY
+    vectorization_mode: VectorizationMode = VectorizationMode.PLOTTER_FIDELITY
     detail: int = Field(default=55, ge=0, le=100)
     threshold: int = Field(default=185, ge=1, le=254)
     target_paths: int = Field(default=32, ge=4, le=512)
@@ -99,6 +129,12 @@ class ProcessingOptions(BaseModel):
     page_height_mm: float = Field(default=297.0, gt=20, le=2000)
     margin_mm: float = Field(default=10.0, ge=0, le=200)
     stroke_width_mm: float = Field(default=0.35, gt=0, le=10)
+    pen_width_mm: float = Field(default=0.5, ge=0.2, le=2.0)
+    ink_coverage_target: float = Field(default=0.97, ge=0.80, le=0.995)
+    fill_strategy: FillStrategy = FillStrategy.CONTOUR
+    maximum_plotter_paths: int = Field(default=3000, ge=100, le=10000)
+    preserve_short_details: bool = True
+    generate_difference_preview: bool = True
     drawing_speed_mm_s: float = Field(default=35.0, gt=0, le=1000)
     travel_speed_mm_s: float = Field(default=90.0, gt=0, le=2000)
     remote_backend: RemoteBackendName = RemoteBackendName.OPENAI_IMAGES
@@ -126,6 +162,12 @@ class ProcessingOptions(BaseModel):
         width, height = self.page_dimensions
         if self.margin_mm * 2 >= min(width, height):
             raise ValueError("Margins leave no drawable page area")
+        if (
+            self.engine == SketchEngineName.OPENCV_XDOG
+            and "drawing_preset" not in self.model_fields_set
+            and "vectorization_mode" not in self.model_fields_set
+        ):
+            object.__setattr__(self, "drawing_preset", DrawingPreset.BALANCED)
         defaults = PRESET_DEFAULTS[self.drawing_preset]
         for field_name, value in defaults.items():
             if field_name not in self.model_fields_set:
@@ -160,6 +202,16 @@ class DrawingStats(BaseModel):
     estimated_time_seconds: float
     average_path_length_mm: float = 0.0
     curve_segment_count: int = 0
+    pen_lifts: int = 0
+    ink_recall: float = 0.0
+    ink_precision: float = 0.0
+    ink_iou: float = 0.0
+    coverage_difference: float = 0.0
+    mean_line_distance_mm: float = 0.0
+    source_ink_area_px: int = 0
+    rendered_ink_area_px: int = 0
+    source_ink_area: int = 0
+    rendered_ink_area: int = 0
 
 
 class JobState(StrEnum):
@@ -205,6 +257,8 @@ class Capabilities(BaseModel):
     image_profiles: list[str]
     drawing_presets: list[str] = Field(default_factory=list)
     remote_backends: list[str] = Field(default_factory=list)
+    vectorization_modes: list[str] = Field(default_factory=list)
+    fill_strategies: list[str] = Field(default_factory=list)
     host_mode: bool
     author: str = "maggogerka"
 

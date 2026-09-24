@@ -174,6 +174,8 @@ class JobManager:
         if name not in record.artifacts or name not in {
             "confidence.png",
             "sketch.png",
+            "vector-preview.png",
+            "difference-overlay.png",
             "drawing.svg",
             "trajectory.json",
         }:

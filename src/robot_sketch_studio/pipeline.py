@@ -128,6 +128,8 @@ class SketchPipeline:
         vector = vectorize(confidence, options)
         confidence_path = output_dir / "confidence.png"
         sketch_path = output_dir / "sketch.png"
+        vector_preview_path = output_dir / "vector-preview.png"
+        difference_path = output_dir / "difference-overlay.png"
         svg_path = output_dir / "drawing.svg"
         trajectory_path = output_dir / "trajectory.json"
         confidence_image = np.rint((1.0 - confidence) * 255.0).astype(np.uint8)
@@ -135,6 +137,18 @@ class SketchPipeline:
             confidence_path, format="PNG", optimize=True
         )
         Image.fromarray(vector.preview, mode="L").save(sketch_path, format="PNG", optimize=True)
+        vector_preview = (
+            vector.vector_preview if vector.vector_preview is not None else vector.preview
+        )
+        Image.fromarray(vector_preview, mode="L").save(
+            vector_preview_path, format="PNG", optimize=True
+        )
+        if vector.difference_overlay is None:
+            difference = np.full((*vector.preview.shape, 3), 255, dtype=np.uint8)
+            difference[vector.preview == 0] = (36, 166, 76)
+        else:
+            difference = vector.difference_overlay
+        Image.fromarray(difference, mode="RGB").save(difference_path, format="PNG", optimize=True)
         write_svg(vector, options, svg_path)
         write_trajectory(vector, options, trajectory_path)
         return PipelineResult(
@@ -142,8 +156,10 @@ class SketchPipeline:
             artifacts={
                 "confidence.png": str(confidence_path),
                 "sketch.png": str(sketch_path),
+                "vector-preview.png": str(vector_preview_path),
+                "difference-overlay.png": str(difference_path),
                 "drawing.svg": str(svg_path),
                 "trajectory.json": str(trajectory_path),
             },
-            warnings=warnings,
+            warnings=warnings + vector.warnings,
         )
