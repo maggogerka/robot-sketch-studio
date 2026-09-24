@@ -22,10 +22,12 @@ from robot_sketch_studio.models import (
     ArtifactList,
     Capabilities,
     DrawingPreset,
+    FillStrategy,
     ImageProfile,
     ProcessingOptions,
     RemoteBackendName,
     RemoteConnectionRequest,
+    VectorizationMode,
 )
 from robot_sketch_studio.providers import create_image_edit_provider
 
@@ -34,6 +36,8 @@ FORMAT_SUFFIXES = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
 MEDIA_TYPES = {
     "confidence.png": "image/png",
     "sketch.png": "image/png",
+    "vector-preview.png": "image/png",
+    "difference-overlay.png": "image/png",
     "drawing.svg": "image/svg+xml",
     "trajectory.json": "application/json",
 }
@@ -120,6 +124,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             image_profiles=[profile.value for profile in ImageProfile],
             drawing_presets=[preset.value for preset in DrawingPreset],
             remote_backends=[backend.value for backend in RemoteBackendName],
+            vectorization_modes=[mode.value for mode in VectorizationMode],
+            fill_strategies=[strategy.value for strategy in FillStrategy],
             host_mode=config.host_mode,
         )
 
