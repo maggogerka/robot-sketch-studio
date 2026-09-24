@@ -39,6 +39,8 @@ def test_full_pipeline_creates_nonempty_artifacts(tmp_path):
     assert sketch.getbbox() is not None
     assert (output / "sketch.png").stat().st_size > 100
     assert (output / "confidence.png").stat().st_size > 100
+    assert (output / "vector-preview.png").stat().st_size > 100
+    assert (output / "difference-overlay.png").stat().st_size > 100
     root = ET.parse(output / "drawing.svg").getroot()
     assert root.tag.endswith("svg")
     assert list(root.iter("{http://www.w3.org/2000/svg}path"))

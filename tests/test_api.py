@@ -53,7 +53,7 @@ def test_health_and_complete_api_pipeline(tmp_path):
         assert "Artistic Remote" in page.text
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["version"] == "0.3.0"
+        assert health.json()["version"] == "0.3.1"
         model_response = client.get("/api/v1/models")
         assert model_response.status_code == 200
         assert {item["id"] for item in model_response.json()["models"]} == {
@@ -85,6 +85,8 @@ def test_health_and_complete_api_pipeline(tmp_path):
         assert {item["name"] for item in artifacts.json()["artifacts"]} == {
             "confidence.png",
             "sketch.png",
+            "vector-preview.png",
+            "difference-overlay.png",
             "drawing.svg",
             "trajectory.json",
         }

@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import pytest
 
-from robot_sketch_studio.models import PaperPreset, ProcessingOptions
+from robot_sketch_studio.models import PaperPreset, ProcessingOptions, VectorizationMode
 from robot_sketch_studio.vectorization import (
     _edge,
     build_graph,
@@ -104,6 +104,7 @@ def test_vectorize_removes_short_component_and_keeps_coordinates_inside_page(tmp
         margin_mm=10,
         min_line_length_mm=5,
         smoothing=0.2,
+        vectorization_mode=VectorizationMode.CENTERLINE,
     )
     result = vectorize(sketch, options)
     assert result.stats.stroke_count == 1
@@ -133,7 +134,11 @@ def test_vectorization_preserves_aspect_ratio():
     sketch[69, 20:141] = 0
     sketch[10:70, 20] = 0
     sketch[10:70, 140] = 0
-    options = ProcessingOptions(min_line_length_mm=0, smoothing=0)
+    options = ProcessingOptions(
+        min_line_length_mm=0,
+        smoothing=0,
+        vectorization_mode=VectorizationMode.CENTERLINE,
+    )
     result = vectorize(sketch, options)
     points = [point for line in result.lines for point in line]
     width = max(x for x, _ in points) - min(x for x, _ in points)

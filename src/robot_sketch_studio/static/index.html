@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Robot Sketch Studio home">
       <span class="brand-mark" aria-hidden="true">R</span>
-      <span><strong>Robot Sketch</strong><small>STUDIO · v0.3.0</small></span>
+      <span><strong>Robot Sketch</strong><small>STUDIO · v0.3.1</small></span>
     </a>
     <nav><a href="#workspace">Workspace</a><a href="#models">Models</a><a href="#about">About</a></nav>
   </header>
@@ -39,21 +39,27 @@
           <label>Background<select id="background"><option value="off">Off</option><option value="auto">Auto</option><option value="person">Person</option><option value="object">Object</option></select></label>
         </div>
         <div class="field-row">
-          <label>Drawing preset<select id="drawingPreset"><option value="minimal">Minimal</option><option value="balanced" selected>Balanced</option><option value="detailed">Detailed</option></select></label>
+          <label>Drawing preset<select id="drawingPreset"><option value="dexarm_fidelity" selected>DexArm Fidelity</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
           <label>Image profile<select id="profile"><option value="auto">Auto</option><option value="photo">Photo</option><option value="portrait">Portrait</option><option value="object">Object</option><option value="document">Document</option><option value="line_drawing">Line drawing</option></select></label>
         </div>
+        <label>Режим векторизации<select id="vectorMode"><option value="plotter_fidelity">Для DexArm — точное рисование</option><option value="centerline">Центральные линии</option><option value="minimal">Минималистичный рисунок</option></select></label>
+        <div class="field-row three">
+          <label>Толщина ручки<select id="penWidth"><option value="0.3">0.3 мм</option><option value="0.4">0.4 мм</option><option value="0.5" selected>0.5 мм</option><option value="0.7">0.7 мм</option><option value="1">1.0 мм</option></select></label>
+          <label>Заполнение<select id="fillStrategy"><option value="contour">Концентрические линии</option><option value="parallel">Параллельные линии</option><option value="none">Не заполнять</option></select></label>
+          <label>Max paths<input id="maxPlotterPaths" type="number" min="100" max="10000" value="3000"></label>
+        </div>
+        <label class="range-label"><span>Сохранение деталей <output id="coverageValue">97%</output></span><input id="coverage" type="range" min="90" max="99" value="97"></label>
         <label class="range-label"><span>Detail <output id="detailValue">55</output></span><input id="detail" type="range" min="0" max="100" value="55"></label>
         <label class="range-label"><span>Confidence cutoff <output id="thresholdValue">185</output></span><input id="threshold" type="range" min="1" max="254" value="185"></label>
         <details class="token-settings">
           <summary>Vector tuning in millimetres</summary>
           <div class="field-row three compact-fields">
-            <label>Target paths<input id="targetPaths" type="number" min="4" max="512" value="32"></label>
-            <label>Min path<input id="minPath" type="number" min="0" step="0.1" value="2.5"></label>
-            <label>Join distance<input id="joinDistance" type="number" min="0" step="0.1" value="1.5"></label>
+            <label id="targetPathsField">Target paths<input id="targetPaths" type="number" min="4" max="512" value="32"><small id="targetPathsHint">Только для Minimal.</small></label>
+            <label>Min path<input id="minPath" type="number" min="0" step="0.05" value="0.25"></label>
+            <label>Join distance<input id="joinDistance" type="number" min="0" step="0.05" value="0.35"></label>
             <label>Join angle °<input id="joinAngle" type="number" min="0" max="90" value="25"></label>
-            <label>Min feature<input id="minFeature" type="number" min="0" step="0.1" value="0.8"></label>
-            <label>Curve tolerance<input id="curveTolerance" type="number" min="0.01" step="0.05" value="0.3"></label>
-            <label>Stroke width<input id="strokeWidth" type="number" min="0.05" step="0.05" value="0.35"></label>
+            <label>Min feature<input id="minFeature" type="number" min="0" step="0.05" value="0.15"></label>
+            <label>Curve tolerance<input id="curveTolerance" type="number" min="0.01" step="0.01" value="0.08"></label>
           </div>
         </details>
         <section id="remoteSettings" class="remote-settings" hidden>
@@ -93,8 +99,10 @@
             <div class="preview"><img id="sketchPreview" alt="Sketch preview"><p>Not processed</p></div>
           </article>
           <article class="preview-card vector-card">
-            <header><span>Trajectory</span><small>CENTRELINE SVG</small></header>
-            <div id="svgPreview" class="preview svg-stage"><p>Not processed</p></div>
+            <header><span>DexArm preview</span><small>PHYSICAL PEN WIDTH</small></header>
+            <div class="compare-actions"><button type="button" data-preview="sketch">AI-скетч</button><button type="button" data-preview="vector" class="active">SVG/DexArm preview</button><button type="button" data-preview="difference">Карта различий</button></div>
+            <div id="resultRaster" class="preview"><img id="resultPreview" alt="DexArm vector preview"><p>Not processed</p></div>
+            <div id="svgPreview" class="preview svg-stage" hidden></div>
           </article>
         </div>
 
@@ -105,11 +113,17 @@
             <div><dt>Drawing</dt><dd id="statDraw">—</dd></div>
             <div><dt>Pen travel</dt><dd id="statTravel">—</dd></div>
             <div><dt>Est. time</dt><dd id="statTime">—</dd></div>
+            <div><dt>Similarity</dt><dd id="statSimilarity">—</dd></div>
+            <div><dt>Ink recall</dt><dd id="statRecall">—</dd></div>
+            <div><dt>Extra ink</dt><dd id="statExtra">—</dd></div>
+            <div><dt>Pen lifts</dt><dd id="statLifts">—</dd></div>
           </dl>
           <div class="actions">
             <button id="simulateButton" type="button" disabled>▶ Simulate drawing</button>
             <button class="download" data-file="confidence.png" disabled>↓ confidence.png</button>
             <button class="download" data-file="sketch.png" disabled>↓ sketch.png</button>
+            <button class="download" data-file="vector-preview.png" disabled>↓ vector-preview.png</button>
+            <button class="download" data-file="difference-overlay.png" disabled>↓ difference-overlay.png</button>
             <button class="download" data-file="drawing.svg" disabled>↓ drawing.svg</button>
             <button class="download" data-file="trajectory.json" disabled>↓ trajectory.json</button>
           </div>
@@ -128,7 +142,7 @@
     <section id="about" class="about">
       <p class="eyebrow">ABOUT</p>
       <h2>Built for a pen,<br>not a plotter illusion.</h2>
-      <p>v0.3.0 keeps a soft AI confidence map, joins aligned fragments through crossings, fits cubic Bézier curves and orders the final strokes to reduce pen-up travel. XDoG remains available as a fast fallback.</p>
+      <p>v0.3.1 restores line weight with physical pen passes, measures raster fidelity, preserves short facial details and exports deterministic DexArm-safe paths. XDoG remains available as a fast fallback.</p>
       <a href="https://github.com/maggogerka/robot-sketch-studio" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
     </section>
   </main>
