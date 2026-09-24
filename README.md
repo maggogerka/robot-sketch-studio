@@ -3,32 +3,28 @@
 Photo-to-vector sketch conversion for robotic pen drawing. Developed by
 [maggogerka](https://github.com/maggogerka).
 
-Robot Sketch Studio v0.3.0 turns a photograph into a small set of long, smooth,
-open SVG paths in millimetres. It is focused on producing artwork that can be
-handed to a Rotrix DexArm workflow; it does not control the arm itself.
+Robot Sketch Studio v0.3.1 turns a photograph into a pen-width-aware SVG in
+millimetres. It preserves the visual density of the AI sketch with real drawing
+passes suitable for a Rotrix DexArm workflow; it does not control the arm.
 
-## What is new in v0.3.0
+## What is new in v0.3.1
 
-- **Clean AI Sketch** is now the default local engine. It runs the official
-  pretrained Informative Drawings generator on CPU or CUDA and retains its soft
-  grayscale confidence map.
-- **Artistic Remote** sends the source photo and a fixed plotter-oriented prompt
-  to an OpenAI-compatible Qwen/FLUX image-edit endpoint or a ComfyUI workflow.
-- **Minimal**, **Balanced**, and **Detailed** presets control the intended path
-  count and all cleanup tolerances in physical millimetres.
-- The vectorizer uses Gaussian softening, hysteresis thresholding, physical
-  component cleanup, gap closing, skeletonization, straight-through junction
-  tracing, direction-aware endpoint joining, blank-gap rejection, cubic Bézier
-  fitting, path limiting, and pen-up route optimization.
-- Results now include confidence.png, cleaned sketch.png, cubic drawing.svg, and
-  trajectory.json.
-- OpenCV XDoG remains available as a fast, model-free fallback.
+- **DexArm Fidelity** is the default preset. Thin ink becomes centreline paths;
+  wide ink gets concentric or parallel passes spaced for the selected pen.
+- Fidelity retains short high-confidence facial details and determines the path
+  count from the drawing. `target_paths` is used only by Minimal.
+- Cubic Bézier fitting is error-bounded in millimetres and falls back to safe
+  line commands at sharp or unsafe geometry.
+- Every result is rasterized at physical pen width and measured for recall,
+  precision, IoU, area difference, and mean line distance.
+- New vector-preview.png and difference-overlay.png show the expected DexArm
+  output and lost/extra ink before a physical run.
 
 ## Windows: start without a terminal
 
 ### Release ZIP
 
-1. Download and extract RobotSketchStudio-v0.3.0-windows-x64.zip.
+1. Download and extract RobotSketchStudio-v0.3.1-windows-x64.zip.
 2. Double-click RobotSketchStudio.exe. It starts without a console window and
    opens <http://127.0.0.1:8000>.
 3. Open **Models** and download **Informative Drawings (official)**.
@@ -98,23 +94,28 @@ prompt are in [docs/artistic-remote.md](docs/artistic-remote.md).
 
 ## Presets and output
 
-| Preset | Target paths | Min path | Join distance | Curve tolerance |
-|---|---:|---:|---:|---:|
-| Minimal | 16 | 4.0 mm | 2.0 mm | 0.5 mm |
-| Balanced | 32 | 2.5 mm | 1.5 mm | 0.3 mm |
-| Detailed | 64 | 1.5 mm | 1.0 mm | 0.2 mm |
+| Preset | Mode | Paths | Pen / curve tolerance |
+|---|---|---|---|
+| DexArm Fidelity | Plotter fidelity | Automatic, guard 3000 | 0.5 / 0.08 mm |
+| Minimal | Minimal | Target 16 | 0.35 / 0.5 mm |
+| Balanced | Centreline | Automatic | 0.35 / 0.3 mm |
+| Detailed | Centreline | Automatic | 0.35 / 0.2 mm |
 
-Every value is available under **Vector tuning in millimetres**. drawing.svg
-uses real mm dimensions, open unfilled paths, round caps, and cubic C commands.
-Import it into the software used for your DexArm and verify paper origin, scale,
-pen height, travel limits, and safety before running hardware.
+Set **Толщина ручки** to the real tip size. The comparison control switches
+between the cleaned AI sketch, physical SVG preview, and a difference map:
+green is reproduced ink, red is lost ink, and blue is extra ink.
+
+drawing.svg uses direct unfilled M/L/C paths, real mm dimensions, round
+caps/joins, and no transforms or CSS. See the
+[DexArm verification guide](docs/dexarm.md) before a physical run.
 
 Runtime data is ignored by Git:
 
 ~~~text
 runtime/
 ├── data/jobs/<uuid>/{input.*,metadata.json}
-├── results/<uuid>/{confidence.png,sketch.png,drawing.svg,trajectory.json}
+├── results/<uuid>/{confidence.png,sketch.png,drawing.svg,trajectory.json,
+│                  vector-preview.png,difference-overlay.png}
 └── models/lineart/{sk_model.pth,sk_model2.pth}
 ~~~
 
@@ -188,9 +189,9 @@ ruff check .
 pytest
 ~~~
 
-The deterministic test suite covers API jobs, verified model downloads,
-hysteresis/vector cleanup, graph edge coverage, junction handling, path limits,
-cubic Bézier output, presets, remote image-edit requests, and pipeline output.
+The deterministic suite includes synthetic thin/thick/circle golden fixtures,
+short-detail and blank-gap checks, physical fill density, SVG safety,
+repeatability, raster metrics, API jobs, remote image edits, and pipeline output.
 
 Known limitations: AI quality still depends on the photograph and pretrained
 model domain; very cluttered or occluded scenes can require Artistic Remote or
@@ -198,6 +199,7 @@ manual cleanup. The ComfyUI adapter requires a user-supplied API-format workflow
 ONNX/DirectML and real robot control are intentionally outside this release.
 
 See [architecture](docs/architecture.md), [vectorization](docs/vectorization.md),
+[DexArm guide](docs/dexarm.md), [API client](docs/api-client.md),
 [model licenses](docs/model-licenses.md), and [roadmap](docs/roadmap.md).
 
 Robot Sketch Studio source is MIT licensed. Third-party code and separately

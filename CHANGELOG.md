@@ -2,6 +2,19 @@
 
 All notable changes are documented here. This project follows semantic versioning.
 
+## 0.3.1 — 2026-09-24
+
+- Added Plotter Fidelity as the default vector mode with physical pen-width
+  rendering, contour or parallel filling, and automatic trajectory counts.
+- Preserved short high-confidence details and stopped `target_paths` from
+  discarding geometry outside the Minimal mode.
+- Replaced unchecked curve interpolation in Fidelity with deterministic,
+  error-bounded cubic Bézier fitting and safe line fallbacks.
+- Added rasterized trajectory quality metrics, bounded refinement,
+  vector-preview.png, and a colour-coded difference-overlay.png.
+- Added DexArm-safe SVG validation, schema 1.2 trajectories, UI comparison
+  controls, synthetic golden regressions, and v0.3.0 API compatibility tests.
+
 ## 0.3.0 — 2026-09-23
 
 - Made official Informative Drawings the default local photo-to-line engine with
