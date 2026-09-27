@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Robot Sketch Studio home">
       <span class="brand-mark" aria-hidden="true">R</span>
-      <span><strong>Robot Sketch</strong><small>STUDIO · v0.3.1</small></span>
+      <span><strong>Robot Sketch</strong><small>STUDIO · v0.4.1</small></span>
     </a>
     <nav><a href="#workspace">Workspace</a><a href="#models">Models</a><a href="#about">About</a></nav>
   </header>
@@ -39,14 +39,20 @@
           <label>Background<select id="background"><option value="off">Off</option><option value="auto">Auto</option><option value="person">Person</option><option value="object">Object</option></select></label>
         </div>
         <div class="field-row">
-          <label>Drawing preset<select id="drawingPreset"><option value="dexarm_fidelity" selected>DexArm Fidelity</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
+          <label>Drawing preset<select id="drawingPreset"><option value="dexarm_fidelity" selected>DexArm Fidelity</option><option value="event_quality">Event Quality / Массовый портрет · рекомендуется</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
           <label>Image profile<select id="profile"><option value="auto">Auto</option><option value="photo">Photo</option><option value="portrait">Portrait</option><option value="object">Object</option><option value="document">Document</option><option value="line_drawing">Line drawing</option></select></label>
         </div>
         <label>Режим векторизации<select id="vectorMode"><option value="plotter_fidelity">Для DexArm — точное рисование</option><option value="centerline">Центральные линии</option><option value="minimal">Минималистичный рисунок</option></select></label>
         <div class="field-row three">
-          <label>Толщина ручки<select id="penWidth"><option value="0.3">0.3 мм</option><option value="0.4">0.4 мм</option><option value="0.5" selected>0.5 мм</option><option value="0.7">0.7 мм</option><option value="1">1.0 мм</option></select></label>
-          <label>Заполнение<select id="fillStrategy"><option value="contour">Концентрические линии</option><option value="parallel">Параллельные линии</option><option value="none">Не заполнять</option></select></label>
+          <label>Толщина ручки<select id="penWidth"><option value="0.3">0.3 мм</option><option value="0.4">0.4 мм</option><option value="0.5" selected>0.5 мм</option><option value="0.7">0.7 мм</option><option value="0.8">0.8 мм</option><option value="1">1.0 мм</option></select></label>
+          <label>Заполнение<select id="fillStrategy"><option value="contour">Концентрические линии</option><option value="parallel">Параллельные линии</option><option value="adaptive_sparse">Адаптивное редкое</option><option value="none">Не заполнять</option></select></label>
           <label>Max paths<input id="maxPlotterPaths" type="number" min="100" max="10000" value="3000"></label>
+        </div>
+        <div id="eventQualitySettings" class="field-row three" hidden>
+          <label>Баланс качества<select id="eventQualityLevel"><option value="quick">Quick · 300–450</option><option value="balanced" selected>Balanced · 450–650 · рекомендуется</option><option value="detailed">Detailed · 650–850</option></select></label>
+          <label>Рисование, мм/с<input id="drawingSpeed" type="number" min="1" max="1000" step="1" value="35"></label>
+          <label>Перемещение, мм/с<input id="travelSpeed" type="number" min="1" max="2000" step="1" value="90"></label>
+          <label>Задержка подъёма, с<input id="penLiftDelay" type="number" min="0" max="10" step="0.05" value="0.35"></label>
         </div>
         <label class="range-label"><span>Сохранение деталей <output id="coverageValue">97%</output></span><input id="coverage" type="range" min="90" max="99" value="97"></label>
         <label class="range-label"><span>Detail <output id="detailValue">55</output></span><input id="detail" type="range" min="0" max="100" value="55"></label>
@@ -115,8 +121,11 @@
             <div><dt>Est. time</dt><dd id="statTime">—</dd></div>
             <div><dt>Similarity</dt><dd id="statSimilarity">—</dd></div>
             <div><dt>Ink recall</dt><dd id="statRecall">—</dd></div>
+            <div><dt>Face recall</dt><dd id="statFaceRecall">—</dd></div>
+            <div><dt>Quality score</dt><dd id="statQuality">—</dd></div>
             <div><dt>Extra ink</dt><dd id="statExtra">—</dd></div>
             <div><dt>Pen lifts</dt><dd id="statLifts">—</dd></div>
+            <div><dt>SVG commands</dt><dd id="statCommands">—</dd></div>
           </dl>
           <div class="actions">
             <button id="simulateButton" type="button" disabled>▶ Simulate drawing</button>
@@ -126,6 +135,12 @@
             <button class="download" data-file="difference-overlay.png" disabled>↓ difference-overlay.png</button>
             <button class="download" data-file="drawing.svg" disabled>↓ drawing.svg</button>
             <button class="download" data-file="trajectory.json" disabled>↓ trajectory.json</button>
+          </div>
+          <div id="speedDownloads" class="actions" hidden>
+            <button class="download" data-file="drawing-speed.svg" disabled>↓ drawing-speed.svg</button>
+            <button class="download" data-file="trajectory-speed.json" disabled>↓ trajectory-speed.json</button>
+            <button class="download" data-file="vector-speed-preview.png" disabled>↓ vector-speed-preview.png</button>
+            <button class="download" data-file="speed-difference-overlay.png" disabled>↓ speed-difference-overlay.png</button>
           </div>
           <p id="warnings" class="warnings" hidden></p>
         </div>
@@ -142,12 +157,12 @@
     <section id="about" class="about">
       <p class="eyebrow">ABOUT</p>
       <h2>Built for a pen,<br>not a plotter illusion.</h2>
-      <p>v0.3.1 restores line weight with physical pen passes, measures raster fidelity, preserves short facial details and exports deterministic DexArm-safe paths. XDoG remains available as a fast fallback.</p>
+      <p>v0.4.1 adds face-aware Event Quality portraits while preserving physical Fidelity output, deterministic DexArm-safe paths and the Clean AI workflow.</p>
       <a href="https://github.com/maggogerka/robot-sketch-studio" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
     </section>
   </main>
 
   <footer><span>Robot Sketch Studio · MIT License</span><a href="https://github.com/maggogerka" target="_blank" rel="noreferrer">Developed by maggogerka</a></footer>
-  <script src="/static/app.js?v=0.3.1" defer></script>
+  <script src="/static/app.js?v=0.4.1" defer></script>
 </body>
 </html>

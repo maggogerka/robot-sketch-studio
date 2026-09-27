@@ -41,10 +41,10 @@ curl.exe -H "Authorization: Bearer YOUR_TOKEN" http://HOST-IP:8000/api/v1/jobs/J
 
 OpenAPI documentation is at http://HOST-IP:8000/docs.
 
-## Vector options in v0.3.1
+## Vector options in v0.4.1
 
-`vectorization_mode` accepts `plotter_fidelity`, `centerline`, or
-`minimal`. Fidelity uses `pen_width_mm` (0.2–2.0),
+`vectorization_mode` accepts `plotter_fidelity`, `event_quality`, `event_speed`,
+`centerline`, or `minimal`. Fidelity uses `pen_width_mm` (0.2–2.0),
 `ink_coverage_target` (0.80–0.995), `fill_strategy` (`contour`,
 `parallel`, or `none`), `maximum_plotter_paths` (100–10000), and
 `preserve_short_details`. `target_paths` is applied only in Minimal.
@@ -53,10 +53,21 @@ The default `dexarm_fidelity` preset selects a 0.5 mm pen, 97% target recall,
 concentric filling, and a 3000-path protection limit. Existing v0.3.0 requests
 and the Minimal/Balanced/Detailed preset names remain valid.
 
+`event_quality` selects the hybrid mass-portrait preset.
+`event_quality_level` accepts `quick`, `balanced`, or `detailed`. It uses
+`adaptive_sparse` fill and reports face recall plus quality score. Time estimates
+use configurable `drawing_speed_mm_s`, `travel_speed_mm_s`, and
+`pen_lift_delay_s`. The v0.4.0 values `fast_portrait`, `event_speed`, and
+`event_speed_level` remain accepted and map to the new implementation.
+
 Completed jobs list six artifacts: confidence.png, sketch.png, drawing.svg,
 trajectory.json, vector-preview.png, and difference-overlay.png. Schema 1.2
 trajectory JSON includes exact M/L/C commands, quality metrics, warnings, and
 the real path count.
+
+Event Quality and legacy Event Speed jobs additionally list drawing-speed.svg, trajectory-speed.json,
+vector-speed-preview.png, and speed-difference-overlay.png. The original six
+names remain present so existing clients do not need conditional download code.
 
 ## Models and remote image edits
 

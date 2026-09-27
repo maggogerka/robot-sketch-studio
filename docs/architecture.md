@@ -6,10 +6,10 @@ browser / API
   → optional BackgroundRemovalProvider
   → CleanAIEngine | Artistic Remote ImageEditProvider | XDoG fallback
   → soft confidence map
-  → vector mode: Plotter Fidelity | centreline | minimal
+  → vector mode: Plotter Fidelity | Event Quality | centreline | minimal
   → hysteresis / topology / physical fill / bounded cubic fitting
   → physical raster comparison and bounded refinement
-  → six artifacts including vector preview and difference overlay
+  → six standard artifacts + four Event Quality artifacts when selected
 ~~~
 
 SketchEngine isolates local raster-to-line inference. ImageEditProvider isolates
@@ -23,6 +23,12 @@ vectorizer. It works per connected-component ROI, uses a distance transform for
 wide ink, and renders exact trajectories back at the physical pen width.
 Error-bounded Bézier fitting is also isolated, allowing future vector backends
 to reuse the exporter without changing the UI or job API.
+
+Event Quality lives in `event_quality.py`. `fidelity.py` exposes an annotated
+candidate builder without changing the Fidelity result. Event Quality adds
+face-aware marginal coverage/time selection and bounded route optimization.
+`event_speed.py` retains the v0.4.0 baseline for regression and provides the
+legacy alias. The job API keeps standard and speed-specific artifact names.
 
 The Clean AI backend implements the official Informative Drawings generator
 architecture locally and loads checksum-pinned official weights. PyTorch is

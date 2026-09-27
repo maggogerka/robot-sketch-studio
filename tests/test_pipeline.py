@@ -7,7 +7,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from robot_sketch_studio.engines.opencv_xdog import OpenCVXDoGEngine
-from robot_sketch_studio.models import ImageProfile, ProcessingOptions, SketchEngineName
+from robot_sketch_studio.models import (
+    EventQualityLevel,
+    ImageProfile,
+    ProcessingOptions,
+    SketchEngineName,
+    VectorizationMode,
+)
 from robot_sketch_studio.pipeline import SketchPipeline
 
 
@@ -66,6 +72,42 @@ def test_missing_optional_background_provider_is_nonfatal(tmp_path):
     )
     assert result.vector.stats.stroke_count > 0
     assert any("rembg" in warning for warning in result.warnings)
+
+
+def test_event_quality_pipeline_adds_named_artifacts_without_removing_standard_ones(tmp_path):
+    source = tmp_path / "source.png"
+    output = tmp_path / "speed-output"
+    make_test_image(source)
+    result = SketchPipeline().process(
+        source,
+        output,
+        ProcessingOptions(
+            engine=SketchEngineName.OPENCV_XDOG,
+            vectorization_mode=VectorizationMode.EVENT_QUALITY,
+            event_quality_level=EventQualityLevel.QUICK,
+            minimum_path_length_mm=0.2,
+            minimum_feature_size_mm=0.05,
+        ),
+    )
+    assert set(result.artifacts) == {
+        "confidence.png",
+        "sketch.png",
+        "vector-preview.png",
+        "difference-overlay.png",
+        "drawing.svg",
+        "trajectory.json",
+        "drawing-speed.svg",
+        "trajectory-speed.json",
+        "vector-speed-preview.png",
+        "speed-difference-overlay.png",
+    }
+    for artifact in result.artifacts:
+        assert (output / artifact).stat().st_size > 0
+    assert (output / "drawing.svg").read_bytes() == (output / "drawing-speed.svg").read_bytes()
+    payload = json.loads((output / "trajectory-speed.json").read_text(encoding="utf-8"))
+    assert payload["mode"] == "event_quality"
+    assert payload["event_quality_level"] == "quick"
+    assert payload["canonical_mode"] == "event_quality"
 
 
 def test_line_drawing_profile_preserves_marks_without_filling_page(tmp_path):

@@ -2,6 +2,29 @@
 
 All notable changes are documented here. This project follows semantic versioning.
 
+## 0.4.1 — 2026-09-27
+
+- Replaced the centerline-only event result with hybrid `event_quality`:
+  Fidelity-derived centerlines and bounded adaptive sparse coverage candidates.
+- Added face-aware protection, marginal coverage-per-time selection, Quick / Balanced /
+  Detailed goals, face recall, and a combined quality score.
+- Preserved `event_speed`, `fast_portrait`, and their saved options as API aliases;
+  Plotter Fidelity output remains unchanged.
+- Updated the UI, DexArm-safe schema 1.4 trajectories, benchmark tooling,
+  regression suite, and Windows portable metadata for v0.4.1.
+
+## 0.4.0 — 2026-09-26
+
+- Added the `event_speed` vector mode and Fast Portrait preset with Express,
+  Event, and Fast Detailed path ranges.
+- Added topology/confidence-aware importance selection that protects significant
+  short details without applying a blanket length cutoff.
+- Added reversible nearest-neighbour plus bounded 2-opt routing and configurable
+  drawing speed, travel speed, and pen-lift delay time accounting.
+- Added DexArm-safe speed SVG/trajectory exports, raster/difference previews, UI
+  comparison, SVG command metrics, and regression coverage.
+- Preserved the v0.3.1 Fidelity geometry and all existing API artifact names.
+
 ## 0.3.1 — 2026-09-24
 
 - Added Plotter Fidelity as the default vector mode with physical pen-width

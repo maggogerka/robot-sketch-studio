@@ -382,6 +382,13 @@ def _as_confidence(sketch: np.ndarray) -> np.ndarray:
 
 
 def vectorize(sketch: np.ndarray, options: ProcessingOptions) -> VectorResult:
+    if options.vectorization_mode in {
+        VectorizationMode.EVENT_SPEED,
+        VectorizationMode.EVENT_QUALITY,
+    }:
+        from robot_sketch_studio.event_quality import vectorize_event_quality
+
+        return vectorize_event_quality(sketch, options)
     if options.vectorization_mode == VectorizationMode.PLOTTER_FIDELITY:
         from robot_sketch_studio.fidelity import vectorize_fidelity
 
@@ -466,6 +473,7 @@ def vectorize(sketch: np.ndarray, options: ProcessingOptions) -> VectorResult:
         estimated_time_seconds=round(estimated, 2),
         average_path_length_mm=round(drawing_length / len(lines), 3) if lines else 0.0,
         curve_segment_count=sum(len(path) for path in curves),
+        svg_command_count=sum(1 + len(path) for path in curves),
     )
     rendered = np.zeros_like(ink, dtype=np.uint8)
     thickness = max(1, int(round(options.stroke_width_mm / max(scale, 1e-9))))

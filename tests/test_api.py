@@ -52,13 +52,20 @@ def test_health_and_complete_api_pipeline(tmp_path):
         assert page.headers["cache-control"] == "no-store, max-age=0"
         assert "Clean AI Sketch" in page.text
         assert "Artistic Remote" in page.text
-        script = client.get("/static/app.js?v=0.3.1")
+        script = client.get("/static/app.js?v=0.4.1")
         assert script.status_code == 200
         assert script.headers["cache-control"] == "no-store, max-age=0"
-        assert 'const UI_VERSION = "0.3.1"' in script.text
+        assert 'const UI_VERSION = "0.4.1"' in script.text
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["version"] == "0.3.1"
+        assert health.json()["version"] == "0.4.1"
+        capabilities = client.get("/api/v1/capabilities").json()
+        assert "fast_portrait" in capabilities["drawing_presets"]
+        assert "event_quality" in capabilities["drawing_presets"]
+        assert "event_speed" in capabilities["vectorization_modes"]
+        assert "event_quality" in capabilities["vectorization_modes"]
+        assert capabilities["event_speed_levels"] == ["express", "event", "fast_detailed"]
+        assert capabilities["event_quality_levels"] == ["quick", "balanced", "detailed"]
         model_response = client.get("/api/v1/models")
         assert model_response.status_code == 200
         assert {item["id"] for item in model_response.json()["models"]} == {
@@ -105,6 +112,40 @@ def test_health_and_complete_api_pipeline(tmp_path):
         deleted = client.delete(f"/api/v1/jobs/{job_id}")
         assert deleted.status_code == 204
         assert client.get(f"/api/v1/jobs/{job_id}").status_code == 404
+
+
+def test_event_speed_artifacts_are_available_through_api(tmp_path):
+    with TestClient(create_app(settings(tmp_path))) as client:
+        response = client.post(
+            "/api/v1/jobs",
+            files={"image": ("portrait.png", image_bytes(), "image/png")},
+            data={
+                "options": json.dumps(
+                    {
+                        "engine": "opencv_xdog",
+                        "drawing_preset": "fast_portrait",
+                        "event_speed_level": "express",
+                        "minimum_path_length_mm": 0.2,
+                        "minimum_feature_size_mm": 0.05,
+                    }
+                )
+            },
+        )
+        assert response.status_code == 202
+        job_id = response.json()["id"]
+        job = wait_for_job(client, job_id)
+        assert job["state"] == "completed", job.get("error")
+        artifacts = client.get(f"/api/v1/jobs/{job_id}/artifacts").json()["artifacts"]
+        names = {item["name"] for item in artifacts}
+        assert {
+            "drawing-speed.svg",
+            "trajectory-speed.json",
+            "vector-speed-preview.png",
+            "speed-difference-overlay.png",
+        } <= names
+        svg = client.get(f"/api/v1/jobs/{job_id}/artifacts/drawing-speed.svg")
+        assert svg.status_code == 200
+        ET.fromstring(svg.content)
 
 
 def test_rejects_corrupt_and_oversized_uploads(tmp_path):

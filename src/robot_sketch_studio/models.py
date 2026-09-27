@@ -33,6 +33,9 @@ class ImageProfile(StrEnum):
 
 class DrawingPreset(StrEnum):
     DEXARM_FIDELITY = "dexarm_fidelity"
+    EVENT_QUALITY = "event_quality"
+    # Compatibility alias for v0.4.0 jobs and API clients.
+    FAST_PORTRAIT = "fast_portrait"
     MINIMAL = "minimal"
     BALANCED = "balanced"
     DETAILED = "detailed"
@@ -40,6 +43,9 @@ class DrawingPreset(StrEnum):
 
 class VectorizationMode(StrEnum):
     PLOTTER_FIDELITY = "plotter_fidelity"
+    EVENT_QUALITY = "event_quality"
+    # Compatibility alias. It uses the Event Quality pipeline in v0.4.1+.
+    EVENT_SPEED = "event_speed"
     CENTERLINE = "centerline"
     MINIMAL = "minimal"
 
@@ -47,7 +53,20 @@ class VectorizationMode(StrEnum):
 class FillStrategy(StrEnum):
     CONTOUR = "contour"
     PARALLEL = "parallel"
+    ADAPTIVE_SPARSE = "adaptive_sparse"
     NONE = "none"
+
+
+class EventSpeedLevel(StrEnum):
+    EXPRESS = "express"
+    EVENT = "event"
+    FAST_DETAILED = "fast_detailed"
+
+
+class EventQualityLevel(StrEnum):
+    QUICK = "quick"
+    BALANCED = "balanced"
+    DETAILED = "detailed"
 
 
 class RemoteBackendName(StrEnum):
@@ -73,6 +92,30 @@ PRESET_DEFAULTS: dict[DrawingPreset, dict[str, float | int | bool | StrEnum]] = 
         "join_distance_mm": 0.35,
         "maximum_join_angle_deg": 25.0,
         "maximum_plotter_paths": 3000,
+        "preserve_short_details": True,
+    },
+    DrawingPreset.FAST_PORTRAIT: {
+        "vectorization_mode": VectorizationMode.EVENT_SPEED,
+        "event_speed_level": EventSpeedLevel.EVENT,
+        "pen_width_mm": 0.5,
+        "fill_strategy": FillStrategy.NONE,
+        "minimum_path_length_mm": 0.8,
+        "minimum_feature_size_mm": 0.25,
+        "curve_fit_tolerance_mm": 0.3,
+        "join_distance_mm": 0.8,
+        "maximum_join_angle_deg": 22.0,
+        "preserve_short_details": True,
+    },
+    DrawingPreset.EVENT_QUALITY: {
+        "vectorization_mode": VectorizationMode.EVENT_QUALITY,
+        "event_quality_level": EventQualityLevel.BALANCED,
+        "pen_width_mm": 0.8,
+        "fill_strategy": FillStrategy.ADAPTIVE_SPARSE,
+        "minimum_path_length_mm": 0.8,
+        "minimum_feature_size_mm": 0.25,
+        "curve_fit_tolerance_mm": 0.3,
+        "join_distance_mm": 0.8,
+        "maximum_join_angle_deg": 22.0,
         "preserve_short_details": True,
     },
     DrawingPreset.MINIMAL: {
@@ -113,6 +156,8 @@ class ProcessingOptions(BaseModel):
     profile: ImageProfile = ImageProfile.AUTO
     drawing_preset: DrawingPreset = DrawingPreset.DEXARM_FIDELITY
     vectorization_mode: VectorizationMode = VectorizationMode.PLOTTER_FIDELITY
+    event_speed_level: EventSpeedLevel = EventSpeedLevel.EVENT
+    event_quality_level: EventQualityLevel = EventQualityLevel.BALANCED
     detail: int = Field(default=55, ge=0, le=100)
     threshold: int = Field(default=185, ge=1, le=254)
     target_paths: int = Field(default=32, ge=4, le=512)
@@ -137,6 +182,7 @@ class ProcessingOptions(BaseModel):
     generate_difference_preview: bool = True
     drawing_speed_mm_s: float = Field(default=35.0, gt=0, le=1000)
     travel_speed_mm_s: float = Field(default=90.0, gt=0, le=2000)
+    pen_lift_delay_s: float = Field(default=0.35, ge=0, le=10)
     remote_backend: RemoteBackendName = RemoteBackendName.OPENAI_IMAGES
     remote_url: str | None = None
     remote_model: str | None = None
@@ -172,6 +218,17 @@ class ProcessingOptions(BaseModel):
         for field_name, value in defaults.items():
             if field_name not in self.model_fields_set:
                 object.__setattr__(self, field_name, value)
+        if (
+            self.vectorization_mode
+            in {VectorizationMode.EVENT_SPEED, VectorizationMode.EVENT_QUALITY}
+            and "fill_strategy" not in self.model_fields_set
+        ):
+            strategy = (
+                FillStrategy.NONE
+                if self.vectorization_mode == VectorizationMode.EVENT_SPEED
+                else FillStrategy.ADAPTIVE_SPARSE
+            )
+            object.__setattr__(self, "fill_strategy", strategy)
         if self.engine == SketchEngineName.ARTISTIC_REMOTE and not self.remote_url:
             raise ValueError("remote_url is required for artistic_remote")
         return self
@@ -194,6 +251,17 @@ class ProcessingOptions(BaseModel):
     def effective_curve_tolerance_mm(self) -> float:
         return self.smoothing if self.smoothing is not None else self.curve_fit_tolerance_mm
 
+    @property
+    def effective_event_quality_level(self) -> EventQualityLevel:
+        if "event_quality_level" in self.model_fields_set:
+            return self.event_quality_level
+        legacy = {
+            EventSpeedLevel.EXPRESS: EventQualityLevel.QUICK,
+            EventSpeedLevel.EVENT: EventQualityLevel.BALANCED,
+            EventSpeedLevel.FAST_DETAILED: EventQualityLevel.DETAILED,
+        }
+        return legacy[self.event_speed_level]
+
 
 class DrawingStats(BaseModel):
     stroke_count: int
@@ -203,9 +271,12 @@ class DrawingStats(BaseModel):
     average_path_length_mm: float = 0.0
     curve_segment_count: int = 0
     pen_lifts: int = 0
+    svg_command_count: int = 0
     ink_recall: float = 0.0
     ink_precision: float = 0.0
     ink_iou: float = 0.0
+    face_weighted_recall: float = 0.0
+    quality_score: float = 0.0
     coverage_difference: float = 0.0
     mean_line_distance_mm: float = 0.0
     source_ink_area_px: int = 0
@@ -259,6 +330,8 @@ class Capabilities(BaseModel):
     remote_backends: list[str] = Field(default_factory=list)
     vectorization_modes: list[str] = Field(default_factory=list)
     fill_strategies: list[str] = Field(default_factory=list)
+    event_speed_levels: list[str] = Field(default_factory=list)
+    event_quality_levels: list[str] = Field(default_factory=list)
     host_mode: bool
     author: str = "maggogerka"
 

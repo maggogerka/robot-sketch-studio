@@ -1,0 +1,33 @@
+{
+  "quick": {
+    "stroke_count": 382,
+    "drawing_length_mm": 464.339,
+    "travel_length_mm": 1318.684,
+    "ink_recall": 0.63667,
+    "face_weighted_recall": 1.0,
+    "svg_command_count": 764
+  },
+  "balanced": {
+    "stroke_count": 560,
+    "drawing_length_mm": 678.581,
+    "travel_length_mm": 1193.348,
+    "ink_recall": 0.93333,
+    "face_weighted_recall": 1.0,
+    "svg_command_count": 1120
+  },
+  "detailed": {
+    "stroke_count": 600,
+    "drawing_length_mm": 726.696,
+    "travel_length_mm": 1009.538,
+    "ink_recall": 1.0,
+    "face_weighted_recall": 1.0,
+    "svg_command_count": 1200
+  },
+  "fidelity": {
+    "stroke_count": 600,
+    "drawing_length_mm": 728.742,
+    "travel_length_mm": 2709.193,
+    "ink_recall": 1.0,
+    "svg_command_count": 1200
+  }
+}

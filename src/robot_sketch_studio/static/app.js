@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const UI_VERSION = "0.3.1";
+const UI_VERSION = "0.4.1";
 const input = $("#imageInput");
 const dropZone = $("#dropZone");
 const processButton = $("#processButton");
@@ -11,6 +11,9 @@ let objectUrls = [];
 let previewUrls = {};
 let backendReady = false;
 let backendError = "Checking backend compatibility...";
+
+const eventModeOption = new Option("Event Quality / Массовый портрет", "event_quality");
+$("#vectorMode").add(eventModeOption, 1);
 
 function updateProcessAvailability() {
   processButton.disabled = !selectedFile || !backendReady;
@@ -105,6 +108,7 @@ $("#paper").addEventListener("change", (event) => {
 
 const presets = {
   dexarm_fidelity: { vectorMode: "plotter_fidelity", penWidth: 0.5, coverage: 97, fillStrategy: "contour", minPath: 0.25, joinDistance: 0.35, joinAngle: 25, minFeature: 0.15, curveTolerance: 0.08, maxPlotterPaths: 3000 },
+  event_quality: { vectorMode: "event_quality", eventQualityLevel: "balanced", penWidth: 0.8, fillStrategy: "adaptive_sparse", minPath: 0.8, joinDistance: 0.8, joinAngle: 22, minFeature: 0.25, curveTolerance: 0.3 },
   minimal: { vectorMode: "minimal", targetPaths: 16, minPath: 4, joinDistance: 2, joinAngle: 20, minFeature: 1.2, curveTolerance: 0.5 },
   balanced: { vectorMode: "centerline", targetPaths: 32, minPath: 2.5, joinDistance: 1.5, joinAngle: 25, minFeature: 0.8, curveTolerance: 0.3 },
   detailed: { vectorMode: "centerline", targetPaths: 64, minPath: 1.5, joinDistance: 1, joinAngle: 30, minFeature: 0.5, curveTolerance: 0.2 }
@@ -123,18 +127,34 @@ function applyPreset(name) {
 $("#drawingPreset").addEventListener("change", (event) => applyPreset(event.target.value));
 function updateVectorMode() {
   const fidelity = $("#vectorMode").value === "plotter_fidelity";
+  const eventQuality = ["event_quality", "event_speed"].includes($("#vectorMode").value);
   const minimal = $("#vectorMode").value === "minimal";
   $("#targetPaths").disabled = !minimal;
   $("#targetPathsField").classList.toggle("disabled-field", !minimal);
-  $("#targetPathsHint").textContent = fidelity
+  $("#targetPathsHint").textContent = eventQuality
+    ? "Диапазон — цель отбора по приросту покрытия и времени, а не случайное обрезание."
+    : fidelity
     ? "Количество траекторий определяется автоматически для сохранения рисунка."
     : minimal
       ? "Жёсткий предел для художественного упрощения."
       : "В режиме центральных линий ограничение не применяется.";
   $("#fillStrategy").disabled = !fidelity;
   $("#maxPlotterPaths").disabled = !fidelity;
+  $("#eventQualitySettings").hidden = !eventQuality;
+  if (eventQuality) $("#fillStrategy").value = "adaptive_sparse";
+  document.querySelector('[data-preview="sketch"]').textContent = eventQuality
+    ? "Качество"
+    : "AI-скетч";
+  document.querySelector('[data-preview="vector"]').textContent = eventQuality
+    ? "Быстрый"
+    : "SVG/DexArm preview";
 }
-$("#vectorMode").addEventListener("change", updateVectorMode);
+$("#vectorMode").addEventListener("change", () => {
+  const mode = $("#vectorMode").value;
+  if (mode === "event_quality") $("#drawingPreset").value = "event_quality";
+  if (mode === "plotter_fidelity") $("#drawingPreset").value = "dexarm_fidelity";
+  updateVectorMode();
+});
 updateVectorMode();
 $("#engine").addEventListener("change", (event) => {
   $("#remoteSettings").hidden = event.target.value !== "artistic_remote";
@@ -147,6 +167,7 @@ function options() {
     profile: $("#profile").value,
     drawing_preset: $("#drawingPreset").value,
     vectorization_mode: $("#vectorMode").value,
+    event_quality_level: $("#eventQualityLevel").value,
     detail: Number($("#detail").value),
     threshold: Number($("#threshold").value),
     target_paths: Number($("#targetPaths").value),
@@ -166,6 +187,9 @@ function options() {
     page_height_mm: Number($("#pageHeight").value),
     margin_mm: Number($("#margin").value),
     stroke_width_mm: Number($("#penWidth").value),
+    drawing_speed_mm_s: Number($("#drawingSpeed").value),
+    travel_speed_mm_s: Number($("#travelSpeed").value),
+    pen_lift_delay_s: Number($("#penLiftDelay").value),
     remote_backend: $("#remoteBackend").value,
     remote_url: $("#engine").value === "artistic_remote" ? $("#remoteUrl").value.trim() : null,
     remote_model: $("#remoteModel").value.trim() || null
@@ -193,10 +217,15 @@ async function verifyBackend() {
     const capabilities = await response.json();
     const presets = capabilities.drawing_presets || [];
     const modes = capabilities.vectorization_modes || [];
-    if (!presets.includes("dexarm_fidelity") || !modes.includes("plotter_fidelity")) {
+    if (
+      !presets.includes("dexarm_fidelity") ||
+      !presets.includes("event_quality") ||
+      !modes.includes("plotter_fidelity") ||
+      !modes.includes("event_quality")
+    ) {
       throw new Error(
         `Interface v${UI_VERSION} is connected to backend v${capabilities.version || "unknown"}. ` +
-        "Close the old Robot Sketch Studio process, start v0.3.1, then press Ctrl+F5."
+        "Close the old Robot Sketch Studio process, start v0.4.1, then press Ctrl+F5."
       );
     }
     backendReady = true;
@@ -323,11 +352,15 @@ async function showResult(job) {
   currentJob = job;
   objectUrls.forEach(URL.revokeObjectURL);
   objectUrls = [];
+  const speedMode = ["event_quality", "event_speed"].includes(job.options.vectorization_mode);
+  const vectorArtifact = speedMode ? "vector-speed-preview.png" : "vector-preview.png";
+  const differenceArtifact = speedMode ? "speed-difference-overlay.png" : "difference-overlay.png";
+  const svgArtifact = speedMode ? "drawing-speed.svg" : "drawing.svg";
   const [sketchBlob, vectorBlob, differenceBlob, svgBlob] = await Promise.all([
     artifactBlob("sketch.png"),
-    artifactBlob("vector-preview.png"),
-    artifactBlob("difference-overlay.png"),
-    artifactBlob("drawing.svg")
+    artifactBlob(vectorArtifact),
+    artifactBlob(differenceArtifact),
+    artifactBlob(svgArtifact)
   ]);
   previewUrls = {
     sketch: URL.createObjectURL(sketchBlob),
@@ -346,10 +379,20 @@ async function showResult(job) {
   $("#statTime").textContent = `${stats.estimated_time_seconds.toFixed(1)} s`;
   $("#statSimilarity").textContent = `${(stats.ink_iou * 100).toFixed(1)}%`;
   $("#statRecall").textContent = `${(stats.ink_recall * 100).toFixed(1)}%`;
+  $("#statFaceRecall").textContent = speedMode
+    ? `${(stats.face_weighted_recall * 100).toFixed(1)}%`
+    : "—";
+  $("#statQuality").textContent = speedMode
+    ? `${(stats.quality_score * 100).toFixed(1)}%`
+    : "—";
   $("#statExtra").textContent = `${((1 - stats.ink_precision) * 100).toFixed(1)}%`;
   $("#statLifts").textContent = stats.pen_lifts.toLocaleString();
+  $("#statCommands").textContent = stats.svg_command_count.toLocaleString();
   $("#simulateButton").disabled = !stats.stroke_count;
-  document.querySelectorAll(".download").forEach((button) => { button.disabled = false; });
+  document.querySelectorAll(".download").forEach((button) => {
+    button.disabled = !(button.dataset.file in job.artifacts);
+  });
+  $("#speedDownloads").hidden = !speedMode;
   $("#warnings").hidden = !job.warnings.length;
   $("#warnings").textContent = job.warnings.join(" ");
   setStatus("Completed", 100, "done");
@@ -385,7 +428,7 @@ processButton.addEventListener("click", async () => {
   } catch (error) {
     showError(error.message || String(error));
   } finally {
-    processButton.disabled = false;
+    updateProcessAvailability();
   }
 });
 

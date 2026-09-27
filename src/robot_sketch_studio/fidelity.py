@@ -19,7 +19,12 @@ from robot_sketch_studio.bezier_fit import (
     fit_path,
     sample_commands,
 )
-from robot_sketch_studio.models import DrawingStats, FillStrategy, ProcessingOptions
+from robot_sketch_studio.models import (
+    DrawingStats,
+    FillStrategy,
+    ProcessingOptions,
+    VectorizationMode,
+)
 from robot_sketch_studio.vectorization import (
     Pixel,
     Polyline,
@@ -40,6 +45,23 @@ class Geometry:
     offset_y: float
     page_width: float
     page_height: float
+
+
+@dataclass(frozen=True, slots=True)
+class FidelityPathCandidate:
+    """A real, drawable Fidelity path with selection metadata."""
+
+    path: list[Pixel]
+    path_type: str
+    component_id: int
+    mean_confidence: float
+    maximum_confidence: float
+    length_mm: float
+    connectivity: float
+    topology: float
+    visual_significance: float
+    face_weight: float
+    protected: bool
 
 
 def _confidence(sketch: np.ndarray) -> np.ndarray:
@@ -280,6 +302,162 @@ def _fill(
     return paths
 
 
+def build_fidelity_candidate_set(
+    source: np.ndarray,
+    confidence: np.ndarray,
+    low_threshold: float,
+    options: ProcessingOptions,
+    geometry: Geometry,
+    face_mask: np.ndarray,
+) -> list[FidelityPathCandidate]:
+    """Build centerline plus sparse physical-coverage candidates for Event Quality.
+
+    This intentionally does not alter ``vectorize_fidelity``. Each candidate is
+    one connected pen-down path; selection may remove it but never joins it to an
+    unrelated path merely to reduce the SVG object count.
+    """
+    skeleton = skeletonize(source)
+    graph = build_graph(skeleton)
+    centerlines = _centerlines(
+        source,
+        confidence,
+        low_threshold,
+        options,
+        geometry,
+        minimum_factor=0.45,
+    )
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(source.astype(np.uint8), 8)
+    component_areas = stats[1:, cv2.CC_STAT_AREA] if count > 1 else np.asarray([1])
+    median_area = float(np.median(component_areas)) if len(component_areas) else 1.0
+    height, width = source.shape
+
+    def candidate(path: list[Pixel], path_type: str, component_hint: int = 0):
+        if len(path) < 2:
+            return None
+        pixels = [
+            (
+                int(np.clip(round(point[0]), 0, height - 1)),
+                int(np.clip(round(point[1]), 0, width - 1)),
+            )
+            for point in path
+        ]
+        components = np.asarray([labels[y, x] for y, x in pixels], dtype=np.int32)
+        nonzero = components[components > 0]
+        component_id = component_hint
+        if len(nonzero):
+            component_id = int(np.bincount(nonzero).argmax())
+        values = np.asarray([confidence[y, x] for y, x in pixels], dtype=np.float32)
+        length_mm = polyline_length(path) * geometry.scale
+        closed = math.dist(path[0], path[-1]) <= math.sqrt(2.0)
+        degrees = [len(graph.get(pixel, ())) for pixel in pixels]
+        junctions = sum(degree > 2 for degree in degrees)
+        endpoints = sum(degree == 1 for degree in (degrees[0], degrees[-1]))
+        connectivity = min(1.0, junctions * 0.25 + endpoints * 0.2)
+        area = int(stats[component_id, cv2.CC_STAT_AREA]) if component_id else 1
+        topology = min(
+            1.0,
+            (0.55 if closed else 0.0)
+            + 0.45 * min(1.0, math.sqrt(area / max(median_area * 4.0, 1.0))),
+        )
+        face_weight = float(np.mean([face_mask[y, x] for y, x in pixels]))
+        mean_confidence = float(values.mean())
+        maximum_confidence = float(values.max(initial=0.0))
+        length_term = min(1.0, math.log1p(length_mm) / math.log(81.0))
+        visual = (
+            0.34 * mean_confidence
+            + 0.14 * maximum_confidence
+            + 0.20 * length_term
+            + 0.10 * connectivity
+            + 0.08 * topology
+            + 0.14 * face_weight
+        )
+        protected = bool(
+            options.preserve_short_details
+            and maximum_confidence >= 0.82
+            and mean_confidence >= 0.60
+            and (face_weight >= 0.35 or connectivity > 0.0 or closed)
+        )
+        return FidelityPathCandidate(
+            path=path,
+            path_type=path_type,
+            component_id=component_id,
+            mean_confidence=mean_confidence,
+            maximum_confidence=maximum_confidence,
+            length_mm=length_mm,
+            connectivity=connectivity,
+            topology=topology,
+            visual_significance=visual,
+            face_weight=face_weight,
+            protected=protected,
+        )
+
+    candidates: list[FidelityPathCandidate] = []
+    for path in centerlines:
+        item = candidate(path, "centerline")
+        if item is not None:
+            candidates.append(item)
+
+    radius_px = options.pen_width_mm * 0.5 / max(geometry.scale, 1e-9)
+    spacing_px = max(1.0, options.pen_width_mm * 0.82 / max(geometry.scale, 1e-9))
+    components = sorted(
+        range(1, count),
+        key=lambda index: (
+            int(stats[index, cv2.CC_STAT_TOP]),
+            int(stats[index, cv2.CC_STAT_LEFT]),
+        ),
+    )
+    for component_id in components:
+        x, y, component_width, component_height = (int(value) for value in stats[component_id, :4])
+        region = labels[y : y + component_height, x : x + component_width] == component_id
+        padded = np.pad(region.astype(np.uint8), 1)
+        distance = cv2.distanceTransform(padded, cv2.DIST_L2, 5)
+        maximum = float(distance.max(initial=0.0))
+        if maximum <= max(0.8, radius_px * 1.05):
+            continue
+        face_region = face_mask[y : y + component_height, x : x + component_width]
+        component_face = float(face_region[region].mean())
+        component_confidence = float(
+            confidence[y : y + component_height, x : x + component_width][region].mean()
+        )
+        area = int(stats[component_id, cv2.CC_STAT_AREA])
+        if component_face >= 0.25:
+            pass_limit = 4
+        elif area >= median_area * 5 and component_confidence >= 0.48:
+            pass_limit = 3
+        elif component_confidence >= max(0.36, low_threshold):
+            pass_limit = 2
+        else:
+            pass_limit = 1
+        level = max(0.55, radius_px * 0.70)
+        emitted = 0
+        while level <= maximum + 0.15 and emitted < pass_limit:
+            inset = (distance >= level).astype(np.uint8)
+            contours, _ = cv2.findContours(inset, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            contours = sorted(
+                contours,
+                key=lambda contour: (
+                    -cv2.arcLength(contour, True),
+                    tuple(cv2.boundingRect(contour)),
+                ),
+            )
+            for contour in contours:
+                if len(contour) < 2 or emitted >= pass_limit:
+                    continue
+                path = [(int(point[0][1]) + y - 1, int(point[0][0]) + x - 1) for point in contour]
+                if path[0] != path[-1]:
+                    path.append(path[0])
+                item = candidate(
+                    path,
+                    "structural_contour" if emitted == 0 else "fill_pass",
+                    component_id,
+                )
+                if item is not None and item.length_mm >= 0.08:
+                    candidates.append(item)
+                    emitted += 1
+            level += spacing_px
+    return candidates
+
+
 def _path_geometry(
     pixel_paths: list[list[Pixel]],
     options: ProcessingOptions,
@@ -445,6 +623,7 @@ def _candidate(
             isinstance(command, CubicCommand) for path in commands for command in path
         ),
         pen_lifts=max(0, len(lines) - 1),
+        svg_command_count=sum(1 + len(path) for path in commands),
         **metrics,
     )
     preview, vector_preview, difference = _preview_images(source, rendered)
@@ -621,20 +800,52 @@ def write_fidelity_trajectory(
         for index, (line, commands) in enumerate(zip(result.lines, result.commands, strict=True))
     ]
     payload = {
-        "schema_version": "1.2",
+        "schema_version": (
+            "1.4"
+            if options.vectorization_mode
+            in {VectorizationMode.EVENT_SPEED, VectorizationMode.EVENT_QUALITY}
+            else "1.2"
+        ),
         "generator": f"Robot Sketch Studio v{__version__}",
         "author": "maggogerka",
         "units": "mm",
         "mode": options.vectorization_mode.value,
         "vectorization_mode": options.vectorization_mode.value,
+        "event_speed_level": (
+            options.event_speed_level.value
+            if options.vectorization_mode == VectorizationMode.EVENT_SPEED
+            else None
+        ),
+        "event_quality_level": (
+            options.effective_event_quality_level.value
+            if options.vectorization_mode
+            in {VectorizationMode.EVENT_SPEED, VectorizationMode.EVENT_QUALITY}
+            else None
+        ),
+        "canonical_mode": (
+            VectorizationMode.EVENT_QUALITY.value
+            if options.vectorization_mode == VectorizationMode.EVENT_SPEED
+            else options.vectorization_mode.value
+        ),
         "pen_width_mm": result.pen_width_mm,
-        "fill_strategy": options.fill_strategy.value,
+        "fill_strategy": (
+            FillStrategy.NONE.value
+            if options.vectorization_mode == VectorizationMode.EVENT_SPEED
+            else options.fill_strategy.value
+        ),
+        "timing": {
+            "drawing_speed_mm_s": options.drawing_speed_mm_s,
+            "travel_speed_mm_s": options.travel_speed_mm_s,
+            "pen_lift_delay_s": options.pen_lift_delay_s,
+        },
         "path_count": len(strokes),
         "warnings": result.warnings,
         "metrics": {
             "ink_recall": result.stats.ink_recall,
             "ink_precision": result.stats.ink_precision,
             "ink_iou": result.stats.ink_iou,
+            "face_weighted_recall": result.stats.face_weighted_recall,
+            "quality_score": result.stats.quality_score,
             "coverage_difference": result.stats.coverage_difference,
             "mean_line_distance_mm": result.stats.mean_line_distance_mm,
             "source_ink_area_px": result.stats.source_ink_area_px,

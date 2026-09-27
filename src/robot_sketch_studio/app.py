@@ -22,6 +22,8 @@ from robot_sketch_studio.models import (
     ArtifactList,
     Capabilities,
     DrawingPreset,
+    EventQualityLevel,
+    EventSpeedLevel,
     FillStrategy,
     ImageProfile,
     ProcessingOptions,
@@ -40,6 +42,10 @@ MEDIA_TYPES = {
     "difference-overlay.png": "image/png",
     "drawing.svg": "image/svg+xml",
     "trajectory.json": "application/json",
+    "drawing-speed.svg": "image/svg+xml",
+    "trajectory-speed.json": "application/json",
+    "vector-speed-preview.png": "image/png",
+    "speed-difference-overlay.png": "image/png",
 }
 
 
@@ -104,7 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
         response = await call_next(request)
         if request.url.path == "/" or request.url.path.startswith("/static/"):
-            # A stale v0.3.1 page talking to a v0.3.0 process produces invalid
+            # A stale browser page talking to an older process produces invalid
             # processing options. UI assets must always match the running API.
             response.headers["Cache-Control"] = "no-store, max-age=0"
             response.headers["Pragma"] = "no-cache"
@@ -132,6 +138,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             remote_backends=[backend.value for backend in RemoteBackendName],
             vectorization_modes=[mode.value for mode in VectorizationMode],
             fill_strategies=[strategy.value for strategy in FillStrategy],
+            event_speed_levels=[level.value for level in EventSpeedLevel],
+            event_quality_levels=[level.value for level in EventQualityLevel],
             host_mode=config.host_mode,
         )
 

@@ -9,7 +9,12 @@ import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from robot_sketch_studio.engines import CleanAIEngine, OpenCVXDoGEngine
-from robot_sketch_studio.models import BackgroundMode, ProcessingOptions, SketchEngineName
+from robot_sketch_studio.models import (
+    BackgroundMode,
+    ProcessingOptions,
+    SketchEngineName,
+    VectorizationMode,
+)
 from robot_sketch_studio.providers import RembgProvider, create_image_edit_provider
 from robot_sketch_studio.vectorization import VectorResult, vectorize, write_svg, write_trajectory
 
@@ -151,15 +156,40 @@ class SketchPipeline:
         Image.fromarray(difference, mode="RGB").save(difference_path, format="PNG", optimize=True)
         write_svg(vector, options, svg_path)
         write_trajectory(vector, options, trajectory_path)
+        artifacts = {
+            "confidence.png": str(confidence_path),
+            "sketch.png": str(sketch_path),
+            "vector-preview.png": str(vector_preview_path),
+            "difference-overlay.png": str(difference_path),
+            "drawing.svg": str(svg_path),
+            "trajectory.json": str(trajectory_path),
+        }
+        if options.vectorization_mode in {
+            VectorizationMode.EVENT_SPEED,
+            VectorizationMode.EVENT_QUALITY,
+        }:
+            speed_preview_path = output_dir / "vector-speed-preview.png"
+            speed_difference_path = output_dir / "speed-difference-overlay.png"
+            speed_svg_path = output_dir / "drawing-speed.svg"
+            speed_trajectory_path = output_dir / "trajectory-speed.json"
+            Image.fromarray(vector_preview, mode="L").save(
+                speed_preview_path, format="PNG", optimize=True
+            )
+            Image.fromarray(difference, mode="RGB").save(
+                speed_difference_path, format="PNG", optimize=True
+            )
+            write_svg(vector, options, speed_svg_path)
+            write_trajectory(vector, options, speed_trajectory_path)
+            artifacts.update(
+                {
+                    "drawing-speed.svg": str(speed_svg_path),
+                    "trajectory-speed.json": str(speed_trajectory_path),
+                    "vector-speed-preview.png": str(speed_preview_path),
+                    "speed-difference-overlay.png": str(speed_difference_path),
+                }
+            )
         return PipelineResult(
             vector=vector,
-            artifacts={
-                "confidence.png": str(confidence_path),
-                "sketch.png": str(sketch_path),
-                "vector-preview.png": str(vector_preview_path),
-                "difference-overlay.png": str(difference_path),
-                "drawing.svg": str(svg_path),
-                "trajectory.json": str(trajectory_path),
-            },
+            artifacts=artifacts,
             warnings=warnings + vector.warnings,
         )

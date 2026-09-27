@@ -178,6 +178,10 @@ class JobManager:
             "difference-overlay.png",
             "drawing.svg",
             "trajectory.json",
+            "drawing-speed.svg",
+            "trajectory-speed.json",
+            "vector-speed-preview.png",
+            "speed-difference-overlay.png",
         }:
             raise JobNotFoundError(name)
         path = self._result_dir(record.id) / name

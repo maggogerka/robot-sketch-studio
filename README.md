@@ -3,11 +3,27 @@
 Photo-to-vector sketch conversion for robotic pen drawing. Developed by
 [maggogerka](https://github.com/maggogerka).
 
-Robot Sketch Studio v0.3.1 turns a photograph into a pen-width-aware SVG in
+Robot Sketch Studio v0.4.1 turns a photograph into a pen-width-aware SVG in
 millimetres. It preserves the visual density of the AI sketch with real drawing
 passes suitable for a Rotrix DexArm workflow; it does not control the arm.
 
-## What is new in v0.3.1
+## What is new in v0.4.1
+
+- **Event Quality / Массовый портрет** combines correct centerlines with sparse
+  Fidelity coverage, instead of throwing away all wide-stroke information.
+- Quick, Balanced, and Detailed use quality-aware goals. Balanced aims for
+  450–650 real paths, global recall 0.72, and face recall 0.82 when the source
+  geometry makes those goals reachable.
+- OpenCV face detection (with an upper-central fallback) protects eyes, nose,
+  mouth, hair, and silhouette. Added contour passes are ranked by marginal
+  physical coverage per added drawing second; low-value surfaces stay sparse.
+- Reversible nearest-neighbour routing plus bounded 2-opt reduces pen-up travel.
+  Drawing speed, travel speed, and pen-lift delay drive the displayed time estimate.
+- Speed jobs add `drawing-speed.svg`, `trajectory-speed.json`,
+  `vector-speed-preview.png`, and `speed-difference-overlay.png` while retaining
+  the original artifact names for API compatibility.
+
+DexArm Fidelity from v0.3.1 is unchanged and remains the quality-first default:
 
 - **DexArm Fidelity** is the default preset. Thin ink becomes centreline paths;
   wide ink gets concentric or parallel passes spaced for the selected pen.
@@ -24,7 +40,7 @@ passes suitable for a Rotrix DexArm workflow; it does not control the arm.
 
 ### Release ZIP
 
-1. Download and extract RobotSketchStudio-v0.3.1-windows-x64.zip.
+1. Download and extract RobotSketchStudio-v0.4.1-windows-x64.zip.
 2. Double-click RobotSketchStudio.exe. It starts without a console window and
    opens <http://127.0.0.1:8000>.
 3. Open **Models** and download **Informative Drawings (official)**.
@@ -97,6 +113,7 @@ prompt are in [docs/artistic-remote.md](docs/artistic-remote.md).
 | Preset | Mode | Paths | Pen / curve tolerance |
 |---|---|---|---|
 | DexArm Fidelity | Plotter fidelity | Automatic, guard 3000 | 0.5 / 0.08 mm |
+| Event Quality / Массовый портрет | Event quality | Quick 300–450; Balanced 450–650; Detailed 650–850 | 0.8 / 0.3 mm |
 | Minimal | Minimal | Target 16 | 0.35 / 0.5 mm |
 | Balanced | Centreline | Automatic | 0.35 / 0.3 mm |
 | Detailed | Centreline | Automatic | 0.35 / 0.2 mm |
@@ -109,13 +126,27 @@ drawing.svg uses direct unfilled M/L/C paths, real mm dimensions, round
 caps/joins, and no transforms or CSS. See the
 [DexArm verification guide](docs/dexarm.md) before a physical run.
 
+For mass portrait drawing choose **Event Quality / Массовый портрет**, start with
+**Balanced**, use a measured 0.7–1.0 mm pen width, set the DexArm draw/travel
+speeds and pen-lift delay, then download
+`drawing-speed.svg`. The path ranges are quality-aware targets: sparse sketches
+are not padded with invented strokes, and disconnected paths are never combined
+with extra `M` commands merely to lower the object count.
+
+Legacy API values `event_speed`, `fast_portrait`, and `event_speed_level` remain
+accepted and migrate to Event Quality. New clients should send
+`vectorization_mode: "event_quality"` and `event_quality_level: "quick" |
+"balanced" | "detailed"`.
+
 Runtime data is ignored by Git:
 
 ~~~text
 runtime/
 ├── data/jobs/<uuid>/{input.*,metadata.json}
 ├── results/<uuid>/{confidence.png,sketch.png,drawing.svg,trajectory.json,
-│                  vector-preview.png,difference-overlay.png}
+│                  vector-preview.png,difference-overlay.png,
+│                  drawing-speed.svg,trajectory-speed.json,
+│                  vector-speed-preview.png,speed-difference-overlay.png}
 └── models/lineart/{sk_model.pth,sk_model2.pth}
 ~~~
 
@@ -191,7 +222,8 @@ pytest
 
 The deterministic suite includes synthetic thin/thick/circle golden fixtures,
 short-detail and blank-gap checks, physical fill density, SVG safety,
-repeatability, raster metrics, API jobs, remote image edits, and pipeline output.
+repeatability, event path budgets, importance retention, bounded 2-opt routing,
+time accounting, raster metrics, API jobs, remote image edits, and pipeline output.
 
 Known limitations: AI quality still depends on the photograph and pretrained
 model domain; very cluttered or occluded scenes can require Artistic Remote or
