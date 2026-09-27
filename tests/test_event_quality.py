@@ -267,4 +267,4 @@ def test_event_quality_svg_and_trajectory_are_dexarm_safe(tmp_path):
 def test_windows_portable_metadata_uses_release_version(relative_path):
     content = Path(relative_path).read_text(encoding="utf-8")
     assert "0.4.0" not in content
-    assert "0.4.1" in content
+    assert "0.4.2" in content

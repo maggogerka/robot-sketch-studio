@@ -24,8 +24,10 @@ from robot_sketch_studio.models import (
     DrawingPreset,
     EventQualityLevel,
     EventSpeedLevel,
+    ExportProfile,
     FillStrategy,
     ImageProfile,
+    PaperPreset,
     ProcessingOptions,
     RemoteBackendName,
     RemoteConnectionRequest,
@@ -46,6 +48,7 @@ MEDIA_TYPES = {
     "trajectory-speed.json": "application/json",
     "vector-speed-preview.png": "image/png",
     "speed-difference-overlay.png": "image/png",
+    "rotrics-line-test.svg": "image/svg+xml",
 }
 
 
@@ -132,7 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             engines=available["engines"],
             background_removal=available["background_removal"],
             formats=["jpg", "png", "webp"],
-            paper_presets=["a4_portrait", "a4_landscape", "custom"],
+            paper_presets=[preset.value for preset in PaperPreset],
             image_profiles=[profile.value for profile in ImageProfile],
             drawing_presets=[preset.value for preset in DrawingPreset],
             remote_backends=[backend.value for backend in RemoteBackendName],
@@ -140,6 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fill_strategies=[strategy.value for strategy in FillStrategy],
             event_speed_levels=[level.value for level in EventSpeedLevel],
             event_quality_levels=[level.value for level in EventQualityLevel],
+            export_profiles=[profile.value for profile in ExportProfile],
             host_mode=config.host_mode,
         )
 

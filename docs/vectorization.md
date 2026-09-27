@@ -1,10 +1,11 @@
 # Confidence map to DexArm trajectories
 
-Version 0.4.1 provides five accepted vector mode values:
+Version 0.4.2 provides six accepted vector mode values:
 
 - `plotter_fidelity` preserves the cleaned AI sketch with the selected physical
   pen width. This is the default for Clean AI Sketch and Artistic Remote.
 - `event_quality` creates face-aware hybrid trajectories for event portraits.
+- `event_single_line` creates one physical centerline per ordinary contour.
 - `event_speed` is a compatible v0.4.0 alias routed to `event_quality`.
 - `centerline` exports an improved one-stroke centreline representation.
 - `minimal` ranks paths and applies the legacy `target_paths` limit.
@@ -71,6 +72,36 @@ standard artifacts and add `drawing-speed.svg`, `trajectory-speed.json`,
 v0.4.0 jobs. Express maps to Quick, Event to Balanced, and Fast Detailed to
 Detailed. New integrations should use `event_quality` and `event_quality_level`.
 
+## Event Single-Line
+
+Single-Line consumes the same finished confidence map as Event Quality, but its
+candidate set accepts only `path_type == centerline`. A protected structural
+contour or fill pass is still rejected. The cleaned mask is skeletonized, short
+medial-axis cap spurs are removed using local physical stroke radius, and every
+undirected graph edge is consumed at most once. Odd vertices are paired only as
+virtual traversal edges; splitting the Euler circuit at those virtual edges
+produces the minimum number of real edge-disjoint trails. Real choices at a
+junction prefer minimum turning angle.
+
+Endpoint joins require distance, direction, and confidence support at every
+sample in the gap. Geometry is simplified and fitted with bounded cubic Bézier
+commands, then `collapse_parallel_paths()` compares same-component paths at
+0.4–0.6 physical pen widths. More than 70% parallel overlap removes the less
+important path; partial overlap retains only unique runs. Detected face paths
+use stricter distance and overlap thresholds.
+
+Open paths may reverse. Nearest-neighbour plus bounded 2-opt optimizes actual
+pen lifts/travel; it never joins disconnected features or writes several `M`
+commands into one path. Scoring uses skeleton topology, centerline distance,
+face/silhouette recall, path count, pen lifts, and estimated time—not black fill
+area. `redundant_path_count`, `parallel_overlap_ratio`, and
+`unique_centerline_coverage` describe the final result.
+
+The `event_single_line` preset selects `rotrics_centerline`,
+`fill_strategy: none`, a 0.8 mm pen, and the physical `rotrics_80x113` paper. SVG schema 1.5
+records the export profile and centerline metrics. Single-Line jobs also include
+`rotrics-line-test.svg`.
+
 ## Quality measurement
 
 The exact M/L/C trajectories are rasterized with `pen_width_mm` and compared
@@ -97,6 +128,6 @@ Z command. Every path carries round caps/joins and a stroke width equal to the
 selected pen width. Page dimensions, viewBox, and coordinates are millimetres,
 finite, and clamped to the drawable area.
 
-The schema 1.2/1.4 trajectory JSON stores the exact ordered commands, real path
+The schema 1.2/1.4/1.5 trajectory JSON stores the exact ordered commands, real path
 count, vectorization mode, pen width, fill strategy, metrics, and warnings.
 Legacy centreline JSON and v0.3.0 request fields remain accepted.

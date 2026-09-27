@@ -2,6 +2,22 @@
 
 All notable changes are documented here. This project follows semantic versioning.
 
+## 0.4.2 — 2026-09-27
+
+- Added `event_single_line`, the Event Single-Line preset, and the Rotrics
+  Centerline 80 × 113 mm export profile without changing Event Quality or
+  Plotter Fidelity output.
+- Added minimum-trail edge-disjoint skeleton tracing, physical parallel-path
+  collapse with cautious face thresholds, fully confidence-supported endpoint
+  joins, reversible routing, and bounded 2-opt.
+- Added duplicate/overlap/unique-centerline metrics, schema 1.5 trajectories,
+  physical-size warnings, UI comparison, and a one-line Rotrics/G-code
+  diagnostic SVG using the selected pen width.
+- Added Single-Line unit/regression tests and a reproducible real-SVG benchmark.
+  The supplied 423-path Event Quality file becomes 114 paths/113 lifts at
+  80 × 113 mm in the replay, with estimated time reduced from 217.57 s to
+  61.04 s; remaining redundant paths are zero.
+
 ## 0.4.1 — 2026-09-27
 
 - Replaced the centerline-only event result with hybrid `event_quality`:

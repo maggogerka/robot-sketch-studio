@@ -182,6 +182,7 @@ class JobManager:
             "trajectory-speed.json",
             "vector-speed-preview.png",
             "speed-difference-overlay.png",
+            "rotrics-line-test.svg",
         }:
             raise JobNotFoundError(name)
         path = self._result_dir(record.id) / name

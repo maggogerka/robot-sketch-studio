@@ -167,6 +167,7 @@ class SketchPipeline:
         if options.vectorization_mode in {
             VectorizationMode.EVENT_SPEED,
             VectorizationMode.EVENT_QUALITY,
+            VectorizationMode.EVENT_SINGLE_LINE,
         }:
             speed_preview_path = output_dir / "vector-speed-preview.png"
             speed_difference_path = output_dir / "speed-difference-overlay.png"
@@ -188,6 +189,14 @@ class SketchPipeline:
                     "speed-difference-overlay.png": str(speed_difference_path),
                 }
             )
+            if options.vectorization_mode == VectorizationMode.EVENT_SINGLE_LINE:
+                from robot_sketch_studio.event_single_line import (
+                    write_rotrics_line_test_svg,
+                )
+
+                diagnostic_path = output_dir / "rotrics-line-test.svg"
+                write_rotrics_line_test_svg(options, diagnostic_path)
+                artifacts["rotrics-line-test.svg"] = str(diagnostic_path)
         return PipelineResult(
             vector=vector,
             artifacts=artifacts,

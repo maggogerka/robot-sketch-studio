@@ -3,11 +3,27 @@
 Photo-to-vector sketch conversion for robotic pen drawing. Developed by
 [maggogerka](https://github.com/maggogerka).
 
-Robot Sketch Studio v0.4.1 turns a photograph into a pen-width-aware SVG in
+Robot Sketch Studio v0.4.2 turns a photograph into a pen-width-aware SVG in
 millimetres. It preserves the visual density of the AI sketch with real drawing
 passes suitable for a Rotrix DexArm workflow; it does not control the arm.
 
-## What is new in v0.4.1
+## What is new in v0.4.2
+
+- **Event Single-Line / Один контур — одна линия** exports centerlines only:
+  no structural contour, fill pass, repeated coverage pass, or fake multi-`M`
+  path can enter the SVG.
+- An edge-disjoint skeleton traversal uses every undirected graph edge once,
+  continues through junctions by minimum turn, then suppresses physical
+  parallel overlap while applying stricter protection inside detected faces.
+- **Rotrics Centerline** generates the final 80 × 113 mm SVG directly. Pen
+  width, joins, duplicate suppression, and curve tolerance are therefore all
+  evaluated in final physical millimetres, not before a 2.62× import resize.
+- UI/trajectory metrics now include remaining duplicate paths, parallel overlap,
+  unique centerline coverage, pen lifts, physical lengths, commands, and time.
+- A one-path `rotrics-line-test.svg` verifies the selected real stroke width in
+  Rotrics/G-code before drawing a portrait.
+
+Event Quality from v0.4.1 remains available unchanged:
 
 - **Event Quality / Массовый портрет** combines correct centerlines with sparse
   Fidelity coverage, instead of throwing away all wide-stroke information.
@@ -40,7 +56,7 @@ DexArm Fidelity from v0.3.1 is unchanged and remains the quality-first default:
 
 ### Release ZIP
 
-1. Download and extract RobotSketchStudio-v0.4.1-windows-x64.zip.
+1. Download and extract RobotSketchStudio-v0.4.2-windows-x64.zip.
 2. Double-click RobotSketchStudio.exe. It starts without a console window and
    opens <http://127.0.0.1:8000>.
 3. Open **Models** and download **Informative Drawings (official)**.
@@ -114,6 +130,7 @@ prompt are in [docs/artistic-remote.md](docs/artistic-remote.md).
 |---|---|---|---|
 | DexArm Fidelity | Plotter fidelity | Automatic, guard 3000 | 0.5 / 0.08 mm |
 | Event Quality / Массовый портрет | Event quality | Quick 300–450; Balanced 450–650; Detailed 650–850 | 0.8 / 0.3 mm |
+| Event Single-Line / Один контур — одна линия | Centerline only | Automatic from topology | 0.8 / 0.2 mm; 80 × 113 mm |
 | Minimal | Minimal | Target 16 | 0.35 / 0.5 mm |
 | Balanced | Centreline | Automatic | 0.35 / 0.3 mm |
 | Detailed | Centreline | Automatic | 0.35 / 0.2 mm |
@@ -133,6 +150,13 @@ speeds and pen-lift delay, then download
 are not padded with invented strokes, and disconnected paths are never combined
 with extra `M` commands merely to lower the object count.
 
+When repeated parallel outlines are visible in Rotrics Studio, choose
+**Event Single-Line** and the **Rotrics Centerline** export profile. Download
+`drawing-speed.svg`; it is already 80 × 113 mm and must be imported at 100%.
+Scaling changes the physical spacing between trajectories while the real pen
+tip does not scale. Use `rotrics-line-test.svg` for the G-code width check
+described in [docs/dexarm.md](docs/dexarm.md).
+
 Legacy API values `event_speed`, `fast_portrait`, and `event_speed_level` remain
 accepted and migrate to Event Quality. New clients should send
 `vectorization_mode: "event_quality"` and `event_quality_level: "quick" |
@@ -146,7 +170,8 @@ runtime/
 ├── results/<uuid>/{confidence.png,sketch.png,drawing.svg,trajectory.json,
 │                  vector-preview.png,difference-overlay.png,
 │                  drawing-speed.svg,trajectory-speed.json,
-│                  vector-speed-preview.png,speed-difference-overlay.png}
+│                  vector-speed-preview.png,speed-difference-overlay.png,
+│                  rotrics-line-test.svg}
 └── models/lineart/{sk_model.pth,sk_model2.pth}
 ~~~
 

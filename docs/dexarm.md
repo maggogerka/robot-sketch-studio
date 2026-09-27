@@ -1,6 +1,6 @@
 # Проверка SVG перед рисованием на Rotrix DexArm
 
-Robot Sketch Studio v0.4.1 создаёт траектории, но не управляет роборукой.
+Robot Sketch Studio v0.4.2 создаёт траектории, но не управляет роборукой.
 Рабочий файл — `drawing.svg`; `vector-preview.png` показывает ожидаемую
 плотность с выбранной толщиной ручки.
 
@@ -47,3 +47,41 @@ Developed by maggogerka.
 0.636 физического recall относительно Fidelity при ручке 0.5 мм. Инструмент
 `tools/svg_quality_benchmark.py` воспроизводит сравнение и сохраняет preview и
 цветную difference-карту.
+
+## Event Single-Line и конечный размер Rotrics
+
+1. Выберите **Event Single-Line / Один контур — одна линия**. Профиль
+   **Rotrics Centerline** автоматически задаёт лист 80 × 113 мм, ручку 0.8 мм
+   и `Fill = none`. Укажите фактическую ширину своей ручки до обработки.
+2. Проверьте `Duplicate paths`, `Parallel overlap`, `Pen lifts`, холостой ход и
+   ожидаемое время. Сравнение **Качество / Одна линия** показывает потерянные и
+   сохранённые центральные линии.
+3. Импортируйте `drawing-speed.svg` в Rotrics Studio в масштабе 100%. Корневые
+   `width`, `height` и `viewBox` уже равны 80 × 113. Масштабирование изменит
+   физический интервал между траекториями. Генерируйте SVG сразу в конечном
+   размере.
+4. В Single-Line каждый дочерний `path` содержит ровно один `M` и далее только
+   `L/C`; нет fill, Z, transform, CSS, masks, filters или outline conversion.
+
+### Проверка фактического G-code
+
+Перед первым портретом импортируйте `rotrics-line-test.svg`: он содержит одну
+прямую линию с выбранным `stroke-width`, а не произвольный hairline. Экспортируйте
+её из Rotrics Studio в G-code и убедитесь, что там один непрерывный участок
+рисования между опусканием и подъёмом ручки, без двух проходов по краям штриха.
+Измерьте линию на бумаге и сравните с выбранной шириной ручки. Если Rotrics
+преобразовал stroke в outline или создал два прохода, отключите outline/fill
+conversion в импорте; не компенсируйте это слепой заменой `stroke-width`.
+
+Benchmark `drawing-speed.svg` имел 423 пути, `stroke-width=0.8`, 5933.9 мм
+рисования и 1259.3 мм холостого хода на ошибочном A4. После приведения исходной
+геометрии к физическим 80 × 113 мм Event Quality требует 217.57 с. Single-Line
+replay создаёт 114 путей, 113 подъёмов, 645.1 мм рисования, 275.5 мм холостого
+хода и 61.04 с (−71.94% времени), с нулём оставшихся redundant paths.
+Воспроизведение:
+
+~~~powershell
+python tools/single_line_benchmark.py `
+  --event "C:\Users\you\Downloads\drawing-speed.svg" `
+  --fidelity "C:\Users\you\Downloads\drawing (5).svg"
+~~~

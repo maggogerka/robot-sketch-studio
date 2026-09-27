@@ -6,7 +6,7 @@ browser / API
   → optional BackgroundRemovalProvider
   → CleanAIEngine | Artistic Remote ImageEditProvider | XDoG fallback
   → soft confidence map
-  → vector mode: Plotter Fidelity | Event Quality | centreline | minimal
+  → vector mode: Plotter Fidelity | Event Quality | Event Single-Line | centreline | minimal
   → hysteresis / topology / physical fill / bounded cubic fitting
   → physical raster comparison and bounded refinement
   → six standard artifacts + four Event Quality artifacts when selected
@@ -29,6 +29,13 @@ candidate builder without changing the Fidelity result. Event Quality adds
 face-aware marginal coverage/time selection and bounded route optimization.
 `event_speed.py` retains the v0.4.0 baseline for regression and provides the
 legacy alias. The job API keeps standard and speed-specific artifact names.
+
+Event Single-Line lives in `event_single_line.py`. It consumes only annotated
+centerline candidates, traces minimum-count edge-disjoint skeleton trails,
+requires full confidence support for joins, removes physical parallel overlap,
+and evaluates topology/face/silhouette retention rather than black fill area.
+Its Rotrics Centerline profile keeps all geometry calculations and SVG metadata
+in the final 80 × 113 mm coordinate system.
 
 The Clean AI backend implements the official Informative Drawings generator
 architecture locally and loads checksum-pinned official weights. PyTorch is

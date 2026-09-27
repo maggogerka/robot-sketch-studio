@@ -34,6 +34,7 @@ class ImageProfile(StrEnum):
 class DrawingPreset(StrEnum):
     DEXARM_FIDELITY = "dexarm_fidelity"
     EVENT_QUALITY = "event_quality"
+    EVENT_SINGLE_LINE = "event_single_line"
     # Compatibility alias for v0.4.0 jobs and API clients.
     FAST_PORTRAIT = "fast_portrait"
     MINIMAL = "minimal"
@@ -44,6 +45,7 @@ class DrawingPreset(StrEnum):
 class VectorizationMode(StrEnum):
     PLOTTER_FIDELITY = "plotter_fidelity"
     EVENT_QUALITY = "event_quality"
+    EVENT_SINGLE_LINE = "event_single_line"
     # Compatibility alias. It uses the Event Quality pipeline in v0.4.1+.
     EVENT_SPEED = "event_speed"
     CENTERLINE = "centerline"
@@ -74,9 +76,15 @@ class RemoteBackendName(StrEnum):
     COMFYUI = "comfyui"
 
 
+class ExportProfile(StrEnum):
+    STANDARD = "standard"
+    ROTRICS_CENTERLINE = "rotrics_centerline"
+
+
 class PaperPreset(StrEnum):
     A4_PORTRAIT = "a4_portrait"
     A4_LANDSCAPE = "a4_landscape"
+    ROTRICS_80X113 = "rotrics_80x113"
     CUSTOM = "custom"
 
 
@@ -116,6 +124,19 @@ PRESET_DEFAULTS: dict[DrawingPreset, dict[str, float | int | bool | StrEnum]] = 
         "curve_fit_tolerance_mm": 0.3,
         "join_distance_mm": 0.8,
         "maximum_join_angle_deg": 22.0,
+        "preserve_short_details": True,
+    },
+    DrawingPreset.EVENT_SINGLE_LINE: {
+        "vectorization_mode": VectorizationMode.EVENT_SINGLE_LINE,
+        "export_profile": ExportProfile.ROTRICS_CENTERLINE,
+        "paper": PaperPreset.ROTRICS_80X113,
+        "pen_width_mm": 0.8,
+        "fill_strategy": FillStrategy.NONE,
+        "minimum_path_length_mm": 0.3,
+        "minimum_feature_size_mm": 0.2,
+        "curve_fit_tolerance_mm": 0.2,
+        "join_distance_mm": 0.5,
+        "maximum_join_angle_deg": 20.0,
         "preserve_short_details": True,
     },
     DrawingPreset.MINIMAL: {
@@ -158,6 +179,7 @@ class ProcessingOptions(BaseModel):
     vectorization_mode: VectorizationMode = VectorizationMode.PLOTTER_FIDELITY
     event_speed_level: EventSpeedLevel = EventSpeedLevel.EVENT
     event_quality_level: EventQualityLevel = EventQualityLevel.BALANCED
+    export_profile: ExportProfile = ExportProfile.STANDARD
     detail: int = Field(default=55, ge=0, le=100)
     threshold: int = Field(default=185, ge=1, le=254)
     target_paths: int = Field(default=32, ge=4, le=512)
@@ -229,6 +251,19 @@ class ProcessingOptions(BaseModel):
                 else FillStrategy.ADAPTIVE_SPARSE
             )
             object.__setattr__(self, "fill_strategy", strategy)
+        if self.vectorization_mode == VectorizationMode.EVENT_SINGLE_LINE:
+            if "fill_strategy" not in self.model_fields_set:
+                object.__setattr__(self, "fill_strategy", FillStrategy.NONE)
+            if "export_profile" not in self.model_fields_set:
+                object.__setattr__(self, "export_profile", ExportProfile.ROTRICS_CENTERLINE)
+        if (
+            self.export_profile == ExportProfile.ROTRICS_CENTERLINE
+            and "paper" not in self.model_fields_set
+        ):
+            object.__setattr__(self, "paper", PaperPreset.ROTRICS_80X113)
+        width, height = self.page_dimensions
+        if self.margin_mm * 2 >= min(width, height):
+            raise ValueError("Margins leave no drawable page area")
         if self.engine == SketchEngineName.ARTISTIC_REMOTE and not self.remote_url:
             raise ValueError("remote_url is required for artistic_remote")
         return self
@@ -239,6 +274,8 @@ class ProcessingOptions(BaseModel):
             return 210.0, 297.0
         if self.paper == PaperPreset.A4_LANDSCAPE:
             return 297.0, 210.0
+        if self.paper == PaperPreset.ROTRICS_80X113:
+            return 80.0, 113.0
         return self.page_width_mm, self.page_height_mm
 
     @property
@@ -277,6 +314,10 @@ class DrawingStats(BaseModel):
     ink_iou: float = 0.0
     face_weighted_recall: float = 0.0
     quality_score: float = 0.0
+    redundant_path_count: int = 0
+    parallel_overlap_ratio: float = 0.0
+    unique_centerline_coverage: float = 0.0
+    silhouette_recall: float = 0.0
     coverage_difference: float = 0.0
     mean_line_distance_mm: float = 0.0
     source_ink_area_px: int = 0
@@ -332,6 +373,7 @@ class Capabilities(BaseModel):
     fill_strategies: list[str] = Field(default_factory=list)
     event_speed_levels: list[str] = Field(default_factory=list)
     event_quality_levels: list[str] = Field(default_factory=list)
+    export_profiles: list[str] = Field(default_factory=list)
     host_mode: bool
     author: str = "maggogerka"
 

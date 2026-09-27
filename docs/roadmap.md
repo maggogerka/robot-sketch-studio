@@ -1,5 +1,15 @@
 # Roadmap
 
+## Completed in 0.4.2
+
+- Centerline-only Event Single-Line mode with edge-disjoint graph traversal,
+  minimum-turn junction continuation, cautious physical duplicate suppression,
+  and strict confidence-supported endpoint joins.
+- Rotrics Centerline 80 × 113 mm export, import-scale warning, real pen-width
+  diagnostic SVG, schema 1.5 metrics, and UI Quality/Single-Line comparison.
+- Regression coverage for one-line thick contours, edge uniqueness, face detail
+  retention, deterministic DexArm SVG, and real drawing-speed.svg benchmark.
+
 ## Completed in 0.4.1
 
 - Hybrid Event Quality selection from annotated Fidelity candidates with

@@ -41,10 +41,11 @@ curl.exe -H "Authorization: Bearer YOUR_TOKEN" http://HOST-IP:8000/api/v1/jobs/J
 
 OpenAPI documentation is at http://HOST-IP:8000/docs.
 
-## Vector options in v0.4.1
+## Vector options in v0.4.2
 
-`vectorization_mode` accepts `plotter_fidelity`, `event_quality`, `event_speed`,
-`centerline`, or `minimal`. Fidelity uses `pen_width_mm` (0.2–2.0),
+`vectorization_mode` accepts `plotter_fidelity`, `event_quality`,
+`event_single_line`, `event_speed`, `centerline`, or `minimal`. Fidelity uses
+`pen_width_mm` (0.2–2.0),
 `ink_coverage_target` (0.80–0.995), `fill_strategy` (`contour`,
 `parallel`, or `none`), `maximum_plotter_paths` (100–10000), and
 `preserve_short_details`. `target_paths` is applied only in Minimal.
@@ -60,13 +61,21 @@ use configurable `drawing_speed_mm_s`, `travel_speed_mm_s`, and
 `pen_lift_delay_s`. The v0.4.0 values `fast_portrait`, `event_speed`, and
 `event_speed_level` remain accepted and map to the new implementation.
 
+`event_single_line` selects only centerline candidates. Use
+`export_profile: "rotrics_centerline"`, `paper: "rotrics_80x113"`, and
+`fill_strategy: "none"` to generate the final 80 × 113 mm Rotrics file without
+import scaling. The matching preset name is `event_single_line`. Schema 1.5
+adds `redundant_path_count`, `parallel_overlap_ratio`,
+`unique_centerline_coverage`, and `silhouette_recall`.
+
 Completed jobs list six artifacts: confidence.png, sketch.png, drawing.svg,
 trajectory.json, vector-preview.png, and difference-overlay.png. Schema 1.2
 trajectory JSON includes exact M/L/C commands, quality metrics, warnings, and
 the real path count.
 
-Event Quality and legacy Event Speed jobs additionally list drawing-speed.svg, trajectory-speed.json,
-vector-speed-preview.png, and speed-difference-overlay.png. The original six
+Event Quality, Event Single-Line, and legacy Event Speed jobs additionally list
+drawing-speed.svg, trajectory-speed.json, vector-speed-preview.png, and
+speed-difference-overlay.png. Single-Line also lists rotrics-line-test.svg. The original six
 names remain present so existing clients do not need conditional download code.
 
 ## Models and remote image edits

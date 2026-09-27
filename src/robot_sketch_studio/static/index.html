@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Robot Sketch Studio home">
       <span class="brand-mark" aria-hidden="true">R</span>
-      <span><strong>Robot Sketch</strong><small>STUDIO · v0.4.1</small></span>
+      <span><strong>Robot Sketch</strong><small>STUDIO · v0.4.2</small></span>
     </a>
     <nav><a href="#workspace">Workspace</a><a href="#models">Models</a><a href="#about">About</a></nav>
   </header>
@@ -39,7 +39,7 @@
           <label>Background<select id="background"><option value="off">Off</option><option value="auto">Auto</option><option value="person">Person</option><option value="object">Object</option></select></label>
         </div>
         <div class="field-row">
-          <label>Drawing preset<select id="drawingPreset"><option value="dexarm_fidelity" selected>DexArm Fidelity</option><option value="event_quality">Event Quality / Массовый портрет · рекомендуется</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
+          <label>Drawing preset<select id="drawingPreset"><option value="dexarm_fidelity" selected>DexArm Fidelity</option><option value="event_quality">Event Quality / Массовый портрет</option><option value="event_single_line">Event Single-Line / Один контур — одна линия · рекомендуется</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
           <label>Image profile<select id="profile"><option value="auto">Auto</option><option value="photo">Photo</option><option value="portrait">Portrait</option><option value="object">Object</option><option value="document">Document</option><option value="line_drawing">Line drawing</option></select></label>
         </div>
         <label>Режим векторизации<select id="vectorMode"><option value="plotter_fidelity">Для DexArm — точное рисование</option><option value="centerline">Центральные линии</option><option value="minimal">Минималистичный рисунок</option></select></label>
@@ -79,12 +79,16 @@
           <button id="testRemote" type="button">Test connection</button>
           <small id="remoteStatus">Configure your image-edit server.</small>
         </section>
-        <label>Paper<select id="paper"><option value="a4_portrait">A4 portrait</option><option value="a4_landscape">A4 landscape</option><option value="custom">Custom</option></select></label>
+        <div class="field-row">
+          <label>Paper<select id="paper"><option value="a4_portrait">A4 portrait</option><option value="a4_landscape">A4 landscape</option><option value="rotrics_80x113">Rotrics 80 × 113 mm</option><option value="custom">Custom</option></select></label>
+          <label>Export profile<select id="exportProfile"><option value="standard">Standard SVG</option><option value="rotrics_centerline">Rotrics Centerline</option></select></label>
+        </div>
         <div class="field-row three">
           <label>Width, mm<input id="pageWidth" type="number" min="21" value="210" disabled></label>
           <label>Height, mm<input id="pageHeight" type="number" min="21" value="297" disabled></label>
           <label>Margin, mm<input id="margin" type="number" min="0" step="1" value="10"></label>
         </div>
+        <p id="scaleWarning" class="warnings" hidden>Масштабирование изменит физический интервал между траекториями. Генерируйте SVG сразу в конечном размере.</p>
         <details class="token-settings">
           <summary>Remote host token</summary>
           <label>Bearer API token<input id="apiToken" type="password" autocomplete="off" placeholder="Only needed in host mode"></label>
@@ -126,6 +130,9 @@
             <div><dt>Extra ink</dt><dd id="statExtra">—</dd></div>
             <div><dt>Pen lifts</dt><dd id="statLifts">—</dd></div>
             <div><dt>SVG commands</dt><dd id="statCommands">—</dd></div>
+            <div><dt>Duplicate paths</dt><dd id="statDuplicates">—</dd></div>
+            <div><dt>Parallel overlap</dt><dd id="statOverlap">—</dd></div>
+            <div><dt>Centerline coverage</dt><dd id="statCenterline">—</dd></div>
           </dl>
           <div class="actions">
             <button id="simulateButton" type="button" disabled>▶ Simulate drawing</button>
@@ -141,6 +148,7 @@
             <button class="download" data-file="trajectory-speed.json" disabled>↓ trajectory-speed.json</button>
             <button class="download" data-file="vector-speed-preview.png" disabled>↓ vector-speed-preview.png</button>
             <button class="download" data-file="speed-difference-overlay.png" disabled>↓ speed-difference-overlay.png</button>
+            <button class="download" data-file="rotrics-line-test.svg" disabled>↓ Rotrics line test SVG</button>
           </div>
           <p id="warnings" class="warnings" hidden></p>
         </div>
@@ -157,12 +165,12 @@
     <section id="about" class="about">
       <p class="eyebrow">ABOUT</p>
       <h2>Built for a pen,<br>not a plotter illusion.</h2>
-      <p>v0.4.1 adds face-aware Event Quality portraits while preserving physical Fidelity output, deterministic DexArm-safe paths and the Clean AI workflow.</p>
+      <p>v0.4.2 adds physical-size Event Single-Line portraits while preserving Event Quality, Fidelity output, deterministic DexArm-safe paths and the Clean AI workflow.</p>
       <a href="https://github.com/maggogerka/robot-sketch-studio" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
     </section>
   </main>
 
   <footer><span>Robot Sketch Studio · MIT License</span><a href="https://github.com/maggogerka" target="_blank" rel="noreferrer">Developed by maggogerka</a></footer>
-  <script src="/static/app.js?v=0.4.1" defer></script>
+  <script src="/static/app.js?v=0.4.2" defer></script>
 </body>
 </html>

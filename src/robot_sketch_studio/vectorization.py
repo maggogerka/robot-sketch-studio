@@ -128,6 +128,137 @@ def trace_graph_continuous(graph: dict[Pixel, list[Pixel]]) -> list[list[Pixel]]
     return paths
 
 
+def trace_graph_edge_disjoint(graph: dict[Pixel, list[Pixel]]) -> list[list[Pixel]]:
+    """Return a minimum trail decomposition while visiting each edge once.
+
+    Odd vertices are paired with virtual edges, each connected component is
+    traversed as an Euler circuit, and the circuit is split again at those
+    virtual edges. Real-edge choices prefer the smallest turn angle.
+    """
+
+    def turn_cost(previous: Pixel | None, current: Pixel, following: Pixel) -> float:
+        if previous is None:
+            return 0.0
+        incoming = (current[0] - previous[0], current[1] - previous[1])
+        outgoing = (following[0] - current[0], following[1] - current[1])
+        denominator = math.hypot(*incoming) * math.hypot(*outgoing)
+        if denominator <= 1e-9:
+            return math.pi
+        cosine = max(-1.0, min(1.0, float(np.dot(incoming, outgoing)) / denominator))
+        return math.acos(cosine)
+
+    components: list[list[Pixel]] = []
+    unseen = set(graph)
+    while unseen:
+        seed = min(unseen)
+        pending = [seed]
+        component: list[Pixel] = []
+        unseen.remove(seed)
+        while pending:
+            node = pending.pop()
+            component.append(node)
+            for neighbor in graph[node]:
+                if neighbor in unseen:
+                    unseen.remove(neighbor)
+                    pending.append(neighbor)
+        components.append(sorted(component))
+
+    paths: list[list[Pixel]] = []
+    for component in components:
+        component_set = set(component)
+        real_edges = sorted(
+            {
+                _edge(node, neighbor)
+                for node in component
+                for neighbor in graph[node]
+                if neighbor in component_set
+            }
+        )
+        if not real_edges:
+            continue
+        records: list[tuple[Pixel, Pixel, bool]] = [
+            (first, second, False) for first, second in real_edges
+        ]
+        odd = sorted(node for node in component if len(graph[node]) % 2 == 1)
+        unpaired = set(odd)
+        while unpaired:
+            first = min(unpaired)
+            unpaired.remove(first)
+            second = min(unpaired, key=lambda node: (math.dist(first, node), node))
+            unpaired.remove(second)
+            records.append((first, second, True))
+
+        adjacency: dict[Pixel, list[int]] = {node: [] for node in component}
+        for edge_id, (first, second, _) in enumerate(records):
+            adjacency[first].append(edge_id)
+            adjacency[second].append(edge_id)
+        used: set[int] = set()
+        start = odd[0] if odd else component[0]
+        stack_nodes = [start]
+        stack_edges: list[int] = []
+        circuit_nodes: list[Pixel] = []
+        circuit_edges: list[int] = []
+        while stack_nodes:
+            current = stack_nodes[-1]
+            previous = stack_nodes[-2] if len(stack_nodes) >= 2 else None
+            choices: list[tuple[tuple, int, Pixel]] = []
+            for edge_id in adjacency[current]:
+                if edge_id in used:
+                    continue
+                first, second, virtual = records[edge_id]
+                following = second if first == current else first
+                choices.append(
+                    (
+                        (
+                            virtual,
+                            turn_cost(previous, current, following),
+                            following,
+                            edge_id,
+                        ),
+                        edge_id,
+                        following,
+                    )
+                )
+            if choices:
+                _, edge_id, following = min(choices)
+                used.add(edge_id)
+                stack_nodes.append(following)
+                stack_edges.append(edge_id)
+                continue
+            circuit_nodes.append(stack_nodes.pop())
+            if stack_edges:
+                circuit_edges.append(stack_edges.pop())
+        nodes = list(reversed(circuit_nodes))
+        edges = list(reversed(circuit_edges))
+        if len(edges) != len(records) or len(nodes) != len(edges) + 1:
+            raise RuntimeError("Edge-disjoint graph traversal was incomplete")
+
+        virtual_positions = [index for index, edge_id in enumerate(edges) if records[edge_id][2]]
+        if not virtual_positions:
+            paths.append(nodes)
+            continue
+        edge_count = len(edges)
+        start_index = (virtual_positions[0] + 1) % edge_count
+        cycle_nodes = nodes[:-1]
+        rotated_nodes = [
+            cycle_nodes[(start_index + index) % edge_count] for index in range(edge_count)
+        ]
+        rotated_nodes.append(rotated_nodes[0])
+        rotated_edges = [edges[(start_index + index) % edge_count] for index in range(edge_count)]
+        current_path = [rotated_nodes[0]]
+        for index, edge_id in enumerate(rotated_edges):
+            following = rotated_nodes[index + 1]
+            if records[edge_id][2]:
+                if len(current_path) >= 2:
+                    paths.append(current_path)
+                current_path = [following]
+            else:
+                current_path.append(following)
+        if len(current_path) >= 2:
+            paths.append(current_path)
+    return paths
+
+
 def polyline_length(points: list[tuple[float, float]] | list[Pixel]) -> float:
     return sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False))
 
@@ -212,6 +343,7 @@ def _gap_has_support(
     confidence: np.ndarray,
     low_threshold: float,
     free_gap_px: float,
+    support_factor: float = 0.35,
 ) -> bool:
     distance = math.dist(first, second)
     samples = max(3, int(math.ceil(distance)) * 2 + 1)
@@ -220,7 +352,7 @@ def _gap_has_support(
     values = confidence[yy, xx]
     # Refuse a shortcut through a genuinely empty region, while allowing weak
     # model responses to bridge a broken semantic contour.
-    return bool(np.all(values >= low_threshold * 0.35))
+    return bool(np.all(values >= low_threshold * support_factor))
 
 
 def _can_join(
@@ -231,6 +363,7 @@ def _can_join(
     maximum_angle: float,
     low_threshold: float,
     free_gap_px: float,
+    support_factor: float = 0.35,
 ) -> tuple[bool, float]:
     distance = math.dist(first[-1], second[0])
     if distance <= 0 or distance > maximum_distance:
@@ -257,7 +390,14 @@ def _can_join(
         or _angle_degrees(gap, outgoing) > maximum_angle * 1.5
     ):
         return False, math.inf
-    if not _gap_has_support(first[-1], second[0], confidence, low_threshold, free_gap_px):
+    if not _gap_has_support(
+        first[-1],
+        second[0],
+        confidence,
+        low_threshold,
+        free_gap_px,
+        support_factor,
+    ):
         return False, math.inf
     return True, distance + turn / max(maximum_angle, 1.0)
 
@@ -269,6 +409,7 @@ def merge_close_paths(
     maximum_angle: float,
     low_threshold: float,
     free_gap_px: float,
+    support_factor: float = 0.35,
 ) -> list[list[Pixel]]:
     if maximum_distance <= 0 or len(paths) < 2:
         return paths
@@ -311,6 +452,7 @@ def merge_close_paths(
                                 maximum_angle,
                                 low_threshold,
                                 free_gap_px,
+                                support_factor,
                             )
                             if allowed and (best is None or score < best[0]):
                                 best = (
@@ -382,6 +524,10 @@ def _as_confidence(sketch: np.ndarray) -> np.ndarray:
 
 
 def vectorize(sketch: np.ndarray, options: ProcessingOptions) -> VectorResult:
+    if options.vectorization_mode == VectorizationMode.EVENT_SINGLE_LINE:
+        from robot_sketch_studio.event_single_line import vectorize_event_single_line
+
+        return vectorize_event_single_line(sketch, options)
     if options.vectorization_mode in {
         VectorizationMode.EVENT_SPEED,
         VectorizationMode.EVENT_QUALITY,

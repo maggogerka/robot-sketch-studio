@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const UI_VERSION = "0.4.1";
+const UI_VERSION = "0.4.2";
 const input = $("#imageInput");
 const dropZone = $("#dropZone");
 const processButton = $("#processButton");
@@ -14,6 +14,8 @@ let backendError = "Checking backend compatibility...";
 
 const eventModeOption = new Option("Event Quality / Массовый портрет", "event_quality");
 $("#vectorMode").add(eventModeOption, 1);
+const singleLineModeOption = new Option("Event Single-Line / Один контур — одна линия", "event_single_line");
+$("#vectorMode").add(singleLineModeOption, 2);
 
 function updateProcessAvailability() {
   processButton.disabled = !selectedFile || !backendReady;
@@ -98,17 +100,24 @@ for (const name of ["detail", "threshold"]) {
 $("#coverage").addEventListener("input", (event) => {
   $("#coverageValue").value = `${event.target.value}%`;
 });
+function updateScaleWarning() {
+  const singleLine = $("#vectorMode").value === "event_single_line";
+  $("#scaleWarning").hidden = !singleLine;
+}
 $("#paper").addEventListener("change", (event) => {
   const custom = event.target.value === "custom";
   $("#pageWidth").disabled = !custom;
   $("#pageHeight").disabled = !custom;
   if (event.target.value === "a4_portrait") [$("#pageWidth").value, $("#pageHeight").value] = [210, 297];
   if (event.target.value === "a4_landscape") [$("#pageWidth").value, $("#pageHeight").value] = [297, 210];
+  if (event.target.value === "rotrics_80x113") [$("#pageWidth").value, $("#pageHeight").value] = [80, 113];
+  updateScaleWarning();
 });
 
 const presets = {
   dexarm_fidelity: { vectorMode: "plotter_fidelity", penWidth: 0.5, coverage: 97, fillStrategy: "contour", minPath: 0.25, joinDistance: 0.35, joinAngle: 25, minFeature: 0.15, curveTolerance: 0.08, maxPlotterPaths: 3000 },
   event_quality: { vectorMode: "event_quality", eventQualityLevel: "balanced", penWidth: 0.8, fillStrategy: "adaptive_sparse", minPath: 0.8, joinDistance: 0.8, joinAngle: 22, minFeature: 0.25, curveTolerance: 0.3 },
+  event_single_line: { vectorMode: "event_single_line", penWidth: 0.8, fillStrategy: "none", minPath: 0.3, joinDistance: 0.5, joinAngle: 20, minFeature: 0.2, curveTolerance: 0.2, paper: "rotrics_80x113", exportProfile: "rotrics_centerline", margin: 5 },
   minimal: { vectorMode: "minimal", targetPaths: 16, minPath: 4, joinDistance: 2, joinAngle: 20, minFeature: 1.2, curveTolerance: 0.5 },
   balanced: { vectorMode: "centerline", targetPaths: 32, minPath: 2.5, joinDistance: 1.5, joinAngle: 25, minFeature: 0.8, curveTolerance: 0.3 },
   detailed: { vectorMode: "centerline", targetPaths: 64, minPath: 1.5, joinDistance: 1, joinAngle: 30, minFeature: 0.5, curveTolerance: 0.2 }
@@ -120,6 +129,9 @@ function applyPreset(name) {
   Object.entries(values).forEach(([id, value]) => {
     document.querySelector("#" + id).value = value;
   });
+  if (values.paper === "rotrics_80x113") {
+    [$("#pageWidth").value, $("#pageHeight").value] = [80, 113];
+  }
   $("#coverageValue").value = `${$("#coverage").value}%`;
   updateVectorMode();
 }
@@ -128,10 +140,12 @@ $("#drawingPreset").addEventListener("change", (event) => applyPreset(event.targ
 function updateVectorMode() {
   const fidelity = $("#vectorMode").value === "plotter_fidelity";
   const eventQuality = ["event_quality", "event_speed"].includes($("#vectorMode").value);
+  const singleLine = $("#vectorMode").value === "event_single_line";
+  const eventMode = eventQuality || singleLine;
   const minimal = $("#vectorMode").value === "minimal";
   $("#targetPaths").disabled = !minimal;
   $("#targetPathsField").classList.toggle("disabled-field", !minimal);
-  $("#targetPathsHint").textContent = eventQuality
+  $("#targetPathsHint").textContent = eventMode
     ? "Диапазон — цель отбора по приросту покрытия и времени, а не случайное обрезание."
     : fidelity
     ? "Количество траекторий определяется автоматически для сохранения рисунка."
@@ -140,20 +154,34 @@ function updateVectorMode() {
       : "В режиме центральных линий ограничение не применяется.";
   $("#fillStrategy").disabled = !fidelity;
   $("#maxPlotterPaths").disabled = !fidelity;
-  $("#eventQualitySettings").hidden = !eventQuality;
+  $("#eventQualitySettings").hidden = !eventMode;
+  $("#eventQualityLevel").disabled = singleLine;
   if (eventQuality) $("#fillStrategy").value = "adaptive_sparse";
-  document.querySelector('[data-preview="sketch"]').textContent = eventQuality
+  if (singleLine) $("#fillStrategy").value = "none";
+  document.querySelector('[data-preview="sketch"]').textContent = eventMode
     ? "Качество"
     : "AI-скетч";
-  document.querySelector('[data-preview="vector"]').textContent = eventQuality
-    ? "Быстрый"
+  document.querySelector('[data-preview="vector"]').textContent = eventMode
+    ? (singleLine ? "Одна линия" : "Быстрый")
     : "SVG/DexArm preview";
+  updateScaleWarning();
 }
 $("#vectorMode").addEventListener("change", () => {
   const mode = $("#vectorMode").value;
   if (mode === "event_quality") $("#drawingPreset").value = "event_quality";
+  if (mode === "event_single_line") {
+    $("#drawingPreset").value = "event_single_line";
+    applyPreset("event_single_line");
+  }
   if (mode === "plotter_fidelity") $("#drawingPreset").value = "dexarm_fidelity";
   updateVectorMode();
+});
+$("#exportProfile").addEventListener("change", (event) => {
+  if (event.target.value === "rotrics_centerline") {
+    $("#paper").value = "rotrics_80x113";
+    [$("#pageWidth").value, $("#pageHeight").value] = [80, 113];
+  }
+  updateScaleWarning();
 });
 updateVectorMode();
 $("#engine").addEventListener("change", (event) => {
@@ -168,6 +196,7 @@ function options() {
     drawing_preset: $("#drawingPreset").value,
     vectorization_mode: $("#vectorMode").value,
     event_quality_level: $("#eventQualityLevel").value,
+    export_profile: $("#exportProfile").value,
     detail: Number($("#detail").value),
     threshold: Number($("#threshold").value),
     target_paths: Number($("#targetPaths").value),
@@ -220,12 +249,14 @@ async function verifyBackend() {
     if (
       !presets.includes("dexarm_fidelity") ||
       !presets.includes("event_quality") ||
+      !presets.includes("event_single_line") ||
       !modes.includes("plotter_fidelity") ||
-      !modes.includes("event_quality")
+      !modes.includes("event_quality") ||
+      !modes.includes("event_single_line")
     ) {
       throw new Error(
         `Interface v${UI_VERSION} is connected to backend v${capabilities.version || "unknown"}. ` +
-        "Close the old Robot Sketch Studio process, start v0.4.1, then press Ctrl+F5."
+        "Close the old Robot Sketch Studio process, start v0.4.2, then press Ctrl+F5."
       );
     }
     backendReady = true;
@@ -352,7 +383,7 @@ async function showResult(job) {
   currentJob = job;
   objectUrls.forEach(URL.revokeObjectURL);
   objectUrls = [];
-  const speedMode = ["event_quality", "event_speed"].includes(job.options.vectorization_mode);
+  const speedMode = ["event_quality", "event_speed", "event_single_line"].includes(job.options.vectorization_mode);
   const vectorArtifact = speedMode ? "vector-speed-preview.png" : "vector-preview.png";
   const differenceArtifact = speedMode ? "speed-difference-overlay.png" : "difference-overlay.png";
   const svgArtifact = speedMode ? "drawing-speed.svg" : "drawing.svg";
@@ -388,6 +419,9 @@ async function showResult(job) {
   $("#statExtra").textContent = `${((1 - stats.ink_precision) * 100).toFixed(1)}%`;
   $("#statLifts").textContent = stats.pen_lifts.toLocaleString();
   $("#statCommands").textContent = stats.svg_command_count.toLocaleString();
+  $("#statDuplicates").textContent = stats.redundant_path_count.toLocaleString();
+  $("#statOverlap").textContent = `${(stats.parallel_overlap_ratio * 100).toFixed(1)}%`;
+  $("#statCenterline").textContent = `${(stats.unique_centerline_coverage * 100).toFixed(1)}%`;
   $("#simulateButton").disabled = !stats.stroke_count;
   document.querySelectorAll(".download").forEach((button) => {
     button.disabled = !(button.dataset.file in job.artifacts);

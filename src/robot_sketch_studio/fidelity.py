@@ -801,7 +801,9 @@ def write_fidelity_trajectory(
     ]
     payload = {
         "schema_version": (
-            "1.4"
+            "1.5"
+            if options.vectorization_mode == VectorizationMode.EVENT_SINGLE_LINE
+            else "1.4"
             if options.vectorization_mode
             in {VectorizationMode.EVENT_SPEED, VectorizationMode.EVENT_QUALITY}
             else "1.2"
@@ -811,6 +813,7 @@ def write_fidelity_trajectory(
         "units": "mm",
         "mode": options.vectorization_mode.value,
         "vectorization_mode": options.vectorization_mode.value,
+        "export_profile": options.export_profile.value,
         "event_speed_level": (
             options.event_speed_level.value
             if options.vectorization_mode == VectorizationMode.EVENT_SPEED
@@ -830,7 +833,8 @@ def write_fidelity_trajectory(
         "pen_width_mm": result.pen_width_mm,
         "fill_strategy": (
             FillStrategy.NONE.value
-            if options.vectorization_mode == VectorizationMode.EVENT_SPEED
+            if options.vectorization_mode
+            in {VectorizationMode.EVENT_SPEED, VectorizationMode.EVENT_SINGLE_LINE}
             else options.fill_strategy.value
         ),
         "timing": {
@@ -846,6 +850,10 @@ def write_fidelity_trajectory(
             "ink_iou": result.stats.ink_iou,
             "face_weighted_recall": result.stats.face_weighted_recall,
             "quality_score": result.stats.quality_score,
+            "redundant_path_count": result.stats.redundant_path_count,
+            "parallel_overlap_ratio": result.stats.parallel_overlap_ratio,
+            "unique_centerline_coverage": result.stats.unique_centerline_coverage,
+            "silhouette_recall": result.stats.silhouette_recall,
             "coverage_difference": result.stats.coverage_difference,
             "mean_line_distance_mm": result.stats.mean_line_distance_mm,
             "source_ink_area_px": result.stats.source_ink_area_px,
