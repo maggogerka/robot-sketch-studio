@@ -1,5 +1,14 @@
 # Roadmap
 
+## Completed in 0.5.0
+
+- Offline Generated Line-Art Import for opaque/transparent PNG, JPG, and WebP,
+  with automatic physical stroke/noise analysis and two preservation profiles.
+- One-centerline thick-stroke conversion, thin semantic detail retention,
+  cautious small-gap/duplicate handling, and quality fallback.
+- Clipboard/drag-drop workflow, source/mask/centerline/SVG previews, new physical
+  metrics, Auto API, portable build checks, fixtures, and documentation.
+
 ## Completed in 0.4.2
 
 - Centerline-only Event Single-Line mode with edge-disjoint graph traversal,

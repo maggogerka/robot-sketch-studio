@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const UI_VERSION = "0.4.2";
+const UI_VERSION = "0.5.0";
 const input = $("#imageInput");
 const dropZone = $("#dropZone");
 const processButton = $("#processButton");
@@ -11,6 +11,9 @@ let objectUrls = [];
 let previewUrls = {};
 let backendReady = false;
 let backendError = "Checking backend compatibility...";
+let lineArtAuto = true;
+let processing = false;
+let previewTimer = null;
 
 const eventModeOption = new Option("Event Quality / Массовый портрет", "event_quality");
 $("#vectorMode").add(eventModeOption, 1);
@@ -91,6 +94,12 @@ dropZone.addEventListener("keydown", (event) => {
   dropZone.classList.remove("dragging");
 }));
 dropZone.addEventListener("drop", (event) => selectFile(event.dataTransfer.files[0]));
+document.addEventListener("paste", (event) => {
+  const item = [...event.clipboardData.items].find((entry) => entry.type.startsWith("image/"));
+  if (!item) return;
+  const pasted = item.getAsFile();
+  if (pasted) selectFile(new File([pasted], "clipboard-" + Date.now() + ".png", { type: pasted.type }));
+});
 
 for (const name of ["detail", "threshold"]) {
   $(`#${name}`).addEventListener("input", (event) => {
@@ -118,6 +127,7 @@ const presets = {
   dexarm_fidelity: { vectorMode: "plotter_fidelity", penWidth: 0.5, coverage: 97, fillStrategy: "contour", minPath: 0.25, joinDistance: 0.35, joinAngle: 25, minFeature: 0.15, curveTolerance: 0.08, maxPlotterPaths: 3000 },
   event_quality: { vectorMode: "event_quality", eventQualityLevel: "balanced", penWidth: 0.8, fillStrategy: "adaptive_sparse", minPath: 0.8, joinDistance: 0.8, joinAngle: 22, minFeature: 0.25, curveTolerance: 0.3 },
   event_single_line: { vectorMode: "event_single_line", penWidth: 0.8, fillStrategy: "none", minPath: 0.3, joinDistance: 0.5, joinAngle: 20, minFeature: 0.2, curveTolerance: 0.2, paper: "rotrics_80x113", exportProfile: "rotrics_centerline", margin: 5 },
+  generated_line_art: { vectorMode: "event_single_line", penWidth: 0.8, fillStrategy: "none", minPath: 0.15, joinDistance: 0.18, joinAngle: 13, minFeature: 0.08, curveTolerance: 0.1, paper: "rotrics_80x113", exportProfile: "rotrics_centerline", margin: 5 },
   minimal: { vectorMode: "minimal", targetPaths: 16, minPath: 4, joinDistance: 2, joinAngle: 20, minFeature: 1.2, curveTolerance: 0.5 },
   balanced: { vectorMode: "centerline", targetPaths: 32, minPath: 2.5, joinDistance: 1.5, joinAngle: 25, minFeature: 0.8, curveTolerance: 0.3 },
   detailed: { vectorMode: "centerline", targetPaths: 64, minPath: 1.5, joinDistance: 1, joinAngle: 30, minFeature: 0.5, curveTolerance: 0.2 }
@@ -184,9 +194,21 @@ $("#exportProfile").addEventListener("change", (event) => {
   updateScaleWarning();
 });
 updateVectorMode();
-$("#engine").addEventListener("change", (event) => {
-  $("#remoteSettings").hidden = event.target.value !== "artistic_remote";
-});
+function updateEngine() {
+  const engine = $("#engine").value;
+  const generated = engine === "generated_line_art";
+  $("#remoteSettings").hidden = engine !== "artistic_remote";
+  $("#lineArtSettings").hidden = !generated;
+  $("#background").disabled = generated;
+  if (generated) {
+    $("#background").value = "off";
+    $("#profile").value = "line_drawing";
+    $("#drawingPreset").value = "generated_line_art";
+    applyPreset("generated_line_art");
+  }
+  document.querySelector('[data-preview="centerline"]').hidden = !generated;
+}
+$("#engine").addEventListener("change", updateEngine);
 
 function options() {
   return {
@@ -196,6 +218,13 @@ function options() {
     drawing_preset: $("#drawingPreset").value,
     vectorization_mode: $("#vectorMode").value,
     event_quality_level: $("#eventQualityLevel").value,
+    line_art_import_profile: $("#lineArtProfile").value,
+    line_art_auto: lineArtAuto,
+    line_art_noise_removal_mm: Number($("#lineArtNoise").value),
+    line_art_gap_closing_mm: Number($("#lineArtGap").value),
+    line_art_smoothing_mm: Number($("#lineArtSmoothing").value),
+    line_art_simplify_tolerance_mm: Number($("#lineArtSimplify").value),
+    line_art_duplicate_tolerance_mm: Number($("#lineArtDuplicate").value),
     export_profile: $("#exportProfile").value,
     detail: Number($("#detail").value),
     threshold: Number($("#threshold").value),
@@ -234,6 +263,78 @@ async function apiError(response) {
   }
 }
 
+function scheduleLineArtPreview() {
+  if ($("#engine").value !== "generated_line_art" || !selectedFile || !currentJob) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(processCurrentImage, 450);
+}
+
+async function analyzeLineArt() {
+  const indicator = $("#lineArtStatus");
+  if (!selectedFile) {
+    indicator.textContent = "Choose or paste a line-art image first.";
+    return;
+  }
+  indicator.className = "";
+  indicator.textContent = "Analyzing stroke width, resolution and noise…";
+  try {
+    const form = new FormData();
+    form.append("image", selectedFile);
+    form.append("options", JSON.stringify(options()));
+    const response = await fetch("/api/v1/line-art/analyze", {
+      method: "POST",
+      headers: authHeaders(),
+      body: form
+    });
+    if (!response.ok) throw new Error(await apiError(response));
+    const analysis = await response.json();
+    const recommendation = analysis.recommendations;
+    const fields = {
+      threshold: "threshold",
+      line_art_noise_removal_mm: "lineArtNoise",
+      minimum_path_length_mm: "minPath",
+      line_art_gap_closing_mm: "lineArtGap",
+      line_art_smoothing_mm: "lineArtSmoothing",
+      line_art_simplify_tolerance_mm: "lineArtSimplify",
+      line_art_duplicate_tolerance_mm: "lineArtDuplicate"
+    };
+    Object.entries(fields).forEach(([name, id]) => {
+      if (name in recommendation) $("#" + id).value = recommendation[name];
+    });
+    $("#thresholdValue").value = $("#threshold").value;
+    lineArtAuto = false;
+    indicator.className = "ok";
+    indicator.textContent =
+      analysis.width_px + " × " + analysis.height_px + " px · " +
+      analysis.millimetres_per_pixel.toFixed(3) + " mm/px · stroke ≈ " +
+      analysis.estimated_stroke_width_mm.toFixed(2) +
+      " mm · noise " + (analysis.noise_ratio * 100).toFixed(1) +
+      "% · settings applied.";
+    scheduleLineArtPreview();
+  } catch (error) {
+    indicator.className = "failed";
+    indicator.textContent = error.message || String(error);
+  }
+}
+
+$("#analyzeLineArt").addEventListener("click", analyzeLineArt);
+$("#lineArtProfile").addEventListener("change", () => {
+  lineArtAuto = true;
+  scheduleLineArtPreview();
+});
+[
+  "threshold", "minPath", "penWidth", "paper", "pageWidth", "pageHeight",
+  "margin", "lineArtNoise", "lineArtGap", "lineArtSmoothing",
+  "lineArtSimplify", "lineArtDuplicate"
+].forEach((id) => {
+  $("#" + id).addEventListener("change", () => {
+    if (id.startsWith("lineArt") || id === "threshold" || id === "minPath") {
+      lineArtAuto = false;
+    }
+    scheduleLineArtPreview();
+  });
+});
+
 async function verifyBackend() {
   backendReady = false;
   updateProcessAvailability();
@@ -250,13 +351,14 @@ async function verifyBackend() {
       !presets.includes("dexarm_fidelity") ||
       !presets.includes("event_quality") ||
       !presets.includes("event_single_line") ||
+      !presets.includes("generated_line_art") ||
       !modes.includes("plotter_fidelity") ||
       !modes.includes("event_quality") ||
       !modes.includes("event_single_line")
     ) {
       throw new Error(
         `Interface v${UI_VERSION} is connected to backend v${capabilities.version || "unknown"}. ` +
-        "Close the old Robot Sketch Studio process, start v0.4.2, then press Ctrl+F5."
+        "Close the old Robot Sketch Studio process, start v0.5.0, then press Ctrl+F5."
       );
     }
     backendReady = true;
@@ -398,6 +500,9 @@ async function showResult(job) {
     vector: URL.createObjectURL(vectorBlob),
     difference: URL.createObjectURL(differenceBlob)
   };
+  if ("centerline-overlay.png" in job.artifacts) {
+    previewUrls.centerline = URL.createObjectURL(await artifactBlob("centerline-overlay.png"));
+  }
   objectUrls.push(...Object.values(previewUrls));
   $("#sketchPreview").src = previewUrls.sketch;
   $("#resultPreview").src = previewUrls.vector;
@@ -422,6 +527,10 @@ async function showResult(job) {
   $("#statDuplicates").textContent = stats.redundant_path_count.toLocaleString();
   $("#statOverlap").textContent = `${(stats.parallel_overlap_ratio * 100).toFixed(1)}%`;
   $("#statCenterline").textContent = `${(stats.unique_centerline_coverage * 100).toFixed(1)}%`;
+  $("#statNodes").textContent = stats.node_count.toLocaleString();
+  const paperSizes = { a4_portrait: "210 × 297 mm", a4_landscape: "297 × 210 mm", rotrics_80x113: "80 × 113 mm" };
+  $("#statPhysical").textContent = paperSizes[job.options.paper] || `${job.options.page_width_mm} × ${job.options.page_height_mm} mm`;
+  document.querySelector('[data-preview="centerline"]').hidden = !previewUrls.centerline;
   $("#simulateButton").disabled = !stats.stroke_count;
   document.querySelectorAll(".download").forEach((button) => {
     button.disabled = !(button.dataset.file in job.artifacts);
@@ -442,8 +551,9 @@ document.querySelectorAll("[data-preview]").forEach((button) => button.addEventL
   button.classList.add("active");
 }));
 
-processButton.addEventListener("click", async () => {
-  if (!selectedFile) return;
+async function processCurrentImage() {
+  if (!selectedFile || processing) return;
+  processing = true;
   processButton.disabled = true;
   showError("");
   setStatus("Uploading", 3, "working");
@@ -462,9 +572,12 @@ processButton.addEventListener("click", async () => {
   } catch (error) {
     showError(error.message || String(error));
   } finally {
+    processing = false;
     updateProcessAvailability();
   }
-});
+}
+
+processButton.addEventListener("click", processCurrentImage);
 
 document.querySelectorAll(".download").forEach((button) => button.addEventListener("click", async () => {
   try {
@@ -507,3 +620,4 @@ $("#apiToken").addEventListener("change", () => {
 });
 verifyBackend();
 refreshModels();
+updateEngine();

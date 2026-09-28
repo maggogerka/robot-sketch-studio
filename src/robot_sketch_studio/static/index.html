@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Robot Sketch Studio home">
       <span class="brand-mark" aria-hidden="true">R</span>
-      <span><strong>Robot Sketch</strong><small>STUDIO · v0.4.2</small></span>
+      <span><strong>Robot Sketch</strong><small>STUDIO · v0.5.0</small></span>
     </a>
     <nav><a href="#workspace">Workspace</a><a href="#models">Models</a><a href="#about">About</a></nav>
   </header>
@@ -30,16 +30,16 @@
           <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
           <span class="drop-icon">↥</span>
           <strong>Drop an image here</strong>
-          <small>or click to browse · JPG, PNG, WebP</small>
+          <small>or click / paste from clipboard · JPG, PNG, WebP</small>
           <b id="fileName">No file selected</b>
         </label>
 
         <div class="field-row">
-          <label>Engine<select id="engine"><option value="clean_ai">Clean AI Sketch</option><option value="artistic_remote">Artistic Remote</option><option value="opencv_xdog">OpenCV XDoG (fallback)</option></select></label>
+          <label>Engine<select id="engine"><option value="clean_ai">Clean AI Sketch</option><option value="generated_line_art">Generated Line-Art Import · offline</option><option value="artistic_remote">Artistic Remote</option><option value="opencv_xdog">OpenCV XDoG (fallback)</option></select></label>
           <label>Background<select id="background"><option value="off">Off</option><option value="auto">Auto</option><option value="person">Person</option><option value="object">Object</option></select></label>
         </div>
         <div class="field-row">
-          <label>Drawing preset<select id="drawingPreset"><option value="dexarm_fidelity" selected>DexArm Fidelity</option><option value="event_quality">Event Quality / Массовый портрет</option><option value="event_single_line">Event Single-Line / Один контур — одна линия · рекомендуется</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
+          <label>Drawing preset<select id="drawingPreset"><option value="dexarm_fidelity" selected>DexArm Fidelity</option><option value="generated_line_art">Generated Line-Art Import</option><option value="event_quality">Event Quality / Массовый портрет</option><option value="event_single_line">Event Single-Line / Один контур — одна линия · рекомендуется</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
           <label>Image profile<select id="profile"><option value="auto">Auto</option><option value="photo">Photo</option><option value="portrait">Portrait</option><option value="object">Object</option><option value="document">Document</option><option value="line_drawing">Line drawing</option></select></label>
         </div>
         <label>Режим векторизации<select id="vectorMode"><option value="plotter_fidelity">Для DexArm — точное рисование</option><option value="centerline">Центральные линии</option><option value="minimal">Минималистичный рисунок</option></select></label>
@@ -54,6 +54,25 @@
           <label>Перемещение, мм/с<input id="travelSpeed" type="number" min="1" max="2000" step="1" value="90"></label>
           <label>Задержка подъёма, с<input id="penLiftDelay" type="number" min="0" max="10" step="0.05" value="0.35"></label>
         </div>
+        <section id="lineArtSettings" class="remote-settings" hidden>
+          <h3>Generated Line-Art Import</h3>
+          <p class="setting-note">For ready-made black line art. Fully offline: no AI, XDoG or Canny.</p>
+          <div class="field-row">
+            <label>Profile<select id="lineArtProfile"><option value="preserve_quality">Preserve Quality</option><option value="dexarm_optimized">DexArm Optimized</option></select></label>
+            <button id="analyzeLineArt" type="button">Auto · analyze</button>
+          </div>
+          <small id="lineArtStatus">Load line art, then press Auto.</small>
+          <details class="token-settings">
+            <summary>Advanced line-art settings</summary>
+            <div class="field-row three compact-fields">
+              <label>Noise, mm<input id="lineArtNoise" type="number" min="0" max="5" step="0.01" value="0.12"></label>
+              <label>Gap closing, mm<input id="lineArtGap" type="number" min="0" max="3" step="0.01" value="0.18"></label>
+              <label>Smoothing, mm<input id="lineArtSmoothing" type="number" min="0.01" max="3" step="0.01" value="0.10"></label>
+              <label>Simplify, mm<input id="lineArtSimplify" type="number" min="0" max="3" step="0.01" value="0.08"></label>
+              <label>Duplicate radius, mm<input id="lineArtDuplicate" type="number" min="0" max="3" step="0.01" value="0.35"></label>
+            </div>
+          </details>
+        </section>
         <label class="range-label"><span>Сохранение деталей <output id="coverageValue">97%</output></span><input id="coverage" type="range" min="90" max="99" value="97"></label>
         <label class="range-label"><span>Detail <output id="detailValue">55</output></span><input id="detail" type="range" min="0" max="100" value="55"></label>
         <label class="range-label"><span>Confidence cutoff <output id="thresholdValue">185</output></span><input id="threshold" type="range" min="1" max="254" value="185"></label>
@@ -110,7 +129,7 @@
           </article>
           <article class="preview-card vector-card">
             <header><span>DexArm preview</span><small>PHYSICAL PEN WIDTH</small></header>
-            <div class="compare-actions"><button type="button" data-preview="sketch">AI-скетч</button><button type="button" data-preview="vector" class="active">SVG/DexArm preview</button><button type="button" data-preview="difference">Карта различий</button></div>
+            <div class="compare-actions"><button type="button" data-preview="sketch">AI-скетч</button><button type="button" data-preview="centerline">Centerline overlay</button><button type="button" data-preview="vector" class="active">SVG/DexArm preview</button><button type="button" data-preview="difference">Карта различий</button></div>
             <div id="resultRaster" class="preview"><img id="resultPreview" alt="DexArm vector preview"><p>Not processed</p></div>
             <div id="svgPreview" class="preview svg-stage" hidden></div>
           </article>
@@ -133,6 +152,8 @@
             <div><dt>Duplicate paths</dt><dd id="statDuplicates">—</dd></div>
             <div><dt>Parallel overlap</dt><dd id="statOverlap">—</dd></div>
             <div><dt>Centerline coverage</dt><dd id="statCenterline">—</dd></div>
+            <div><dt>Centerline nodes</dt><dd id="statNodes">—</dd></div>
+            <div><dt>Physical size</dt><dd id="statPhysical">—</dd></div>
           </dl>
           <div class="actions">
             <button id="simulateButton" type="button" disabled>▶ Simulate drawing</button>
@@ -142,6 +163,7 @@
             <button class="download" data-file="difference-overlay.png" disabled>↓ difference-overlay.png</button>
             <button class="download" data-file="drawing.svg" disabled>↓ drawing.svg</button>
             <button class="download" data-file="trajectory.json" disabled>↓ trajectory.json</button>
+            <button class="download" data-file="centerline-overlay.png" disabled>↓ centerline-overlay.png</button>
           </div>
           <div id="speedDownloads" class="actions" hidden>
             <button class="download" data-file="drawing-speed.svg" disabled>↓ drawing-speed.svg</button>
@@ -165,12 +187,12 @@
     <section id="about" class="about">
       <p class="eyebrow">ABOUT</p>
       <h2>Built for a pen,<br>not a plotter illusion.</h2>
-      <p>v0.4.2 adds physical-size Event Single-Line portraits while preserving Event Quality, Fidelity output, deterministic DexArm-safe paths and the Clean AI workflow.</p>
+      <p>v0.5.0 adds fully offline import of generated line art with automatic physical settings, one-centerline conversion and DexArm-safe SVG output.</p>
       <a href="https://github.com/maggogerka/robot-sketch-studio" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
     </section>
   </main>
 
   <footer><span>Robot Sketch Studio · MIT License</span><a href="https://github.com/maggogerka" target="_blank" rel="noreferrer">Developed by maggogerka</a></footer>
-  <script src="/static/app.js?v=0.4.2" defer></script>
+  <script src="/static/app.js?v=0.5.0" defer></script>
 </body>
 </html>

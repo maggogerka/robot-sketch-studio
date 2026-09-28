@@ -1,6 +1,7 @@
 # Confidence map to DexArm trajectories
 
-Version 0.4.2 provides six accepted vector mode values:
+Version 0.5.0 provides six accepted vector mode values and a dedicated
+`generated_line_art` raster engine:
 
 - `plotter_fidelity` preserves the cleaned AI sketch with the selected physical
   pen width. This is the default for Clean AI Sketch and Artistic Remote.
@@ -9,6 +10,31 @@ Version 0.4.2 provides six accepted vector mode values:
 - `event_speed` is a compatible v0.4.0 alias routed to `event_quality`.
 - `centerline` exports an improved one-stroke centreline representation.
 - `minimal` ranks paths and applies the legacy `target_paths` limit.
+
+## Generated Line-Art Import
+
+This engine consumes already generated black line art and never runs AI, XDoG,
+or Canny. RGBA input is composited onto white, normalized from measured
+background/line levels, and retained as a continuous confidence map. Hysteresis
+removes only isolated low-confidence specks; thin source lines remain eligible.
+
+Auto analysis estimates physical source stroke width from the distance transform
+on its skeleton. The selected profile controls noise removal, minimum path,
+small-gap closing, simplification, cubic fitting, and duplicate radius in final
+millimetres. Thick components are skeletonized and traced edge-disjointly, so a
+stroke becomes one centerline rather than an outline pair. Joins require close,
+direction-compatible endpoints and are bounded by the configured physical gap.
+
+`preserve_quality` is deliberately gentle. `dexarm_optimized` permits small
+reductions but the pipeline compares face and centerline coverage and falls back
+to Preserve Quality when important topology measurably improves. The generated
+SVG is black (`#000000`); legacy modes retain their existing colour/output.
+
+The browser exposes `threshold`, `minimum_path_length_mm`, pen/paper size and
+`line_art_noise_removal_mm`, `line_art_gap_closing_mm`,
+`line_art_smoothing_mm`, `line_art_simplify_tolerance_mm`, and
+`line_art_duplicate_tolerance_mm`. `centerline-overlay.png` is an additional
+artifact; all existing artifact names remain compatible.
 
 ## Plotter Fidelity
 

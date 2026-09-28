@@ -63,6 +63,8 @@ input[type="range"] { width: 100%; accent-color: var(--signal); }
 .compact-fields { margin-top: 10px; }
 .remote-settings { margin: 4px 0 14px; padding: 14px; border: 1px solid var(--line); background: #f5f4ed; }
 .remote-settings h3 { margin: 0 0 12px; font-size: 13px; }
+.remote-settings .setting-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.remote-settings .field-row > button { align-self: end; margin-bottom: 14px; }
 .remote-settings button { min-height: 38px; border: 1px solid var(--ink); background: var(--ink); color: var(--acid); padding: 0 12px; font-weight: 800; cursor: pointer; }
 .remote-settings small { display: block; margin-top: 9px; color: var(--muted); line-height: 1.4; }
 .remote-settings small.ok { color: #32752f; }

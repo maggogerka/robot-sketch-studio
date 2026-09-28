@@ -4,12 +4,12 @@
 browser / API
   → verified upload → bounded JobManager
   → optional BackgroundRemovalProvider
-  → CleanAIEngine | Artistic Remote ImageEditProvider | XDoG fallback
+  → CleanAIEngine | GeneratedLineArtEngine | Artistic Remote ImageEditProvider | XDoG fallback
   → soft confidence map
   → vector mode: Plotter Fidelity | Event Quality | Event Single-Line | centreline | minimal
   → hysteresis / topology / physical fill / bounded cubic fitting
   → physical raster comparison and bounded refinement
-  → six standard artifacts + four Event Quality artifacts when selected
+  → six standard artifacts + mode-specific speed/centerline artifacts
 ~~~
 
 SketchEngine isolates local raster-to-line inference. ImageEditProvider isolates
@@ -36,6 +36,13 @@ requires full confidence support for joins, removes physical parallel overlap,
 and evaluates topology/face/silhouette retention rather than black fill area.
 Its Rotrics Centerline profile keeps all geometry calculations and SVG metadata
 in the final 80 × 113 mm coordinate system.
+
+Generated Line-Art Import lives in `engines/generated_line_art.py`. It has its
+own alpha-safe decoder and deterministic analyzer, produces a soft confidence
+map without a model, and delegates only the centerline topology/export stages
+to Event Single-Line. This keeps the photo engines and their established output
+unchanged. The `/api/v1/line-art/analyze` endpoint returns recommendations but
+does not create a job; normal job submission remains the end-to-end API.
 
 The Clean AI backend implements the official Informative Drawings generator
 architecture locally and loads checksum-pinned official weights. PyTorch is

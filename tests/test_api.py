@@ -52,17 +52,19 @@ def test_health_and_complete_api_pipeline(tmp_path):
         assert page.headers["cache-control"] == "no-store, max-age=0"
         assert "Clean AI Sketch" in page.text
         assert "Artistic Remote" in page.text
-        script = client.get("/static/app.js?v=0.4.2")
+        script = client.get("/static/app.js?v=0.5.0")
         assert script.status_code == 200
         assert script.headers["cache-control"] == "no-store, max-age=0"
-        assert 'const UI_VERSION = "0.4.2"' in script.text
+        assert 'const UI_VERSION = "0.5.0"' in script.text
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["version"] == "0.4.2"
+        assert health.json()["version"] == "0.5.0"
         capabilities = client.get("/api/v1/capabilities").json()
         assert "fast_portrait" in capabilities["drawing_presets"]
         assert "event_quality" in capabilities["drawing_presets"]
         assert "event_single_line" in capabilities["drawing_presets"]
+        assert "generated_line_art" in capabilities["drawing_presets"]
+        assert capabilities["engines"]["generated_line_art"]["offline"] is True
         assert "event_speed" in capabilities["vectorization_modes"]
         assert "event_quality" in capabilities["vectorization_modes"]
         assert "event_single_line" in capabilities["vectorization_modes"]

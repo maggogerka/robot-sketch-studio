@@ -3,11 +3,26 @@
 Photo-to-vector sketch conversion for robotic pen drawing. Developed by
 [maggogerka](https://github.com/maggogerka).
 
-Robot Sketch Studio v0.4.2 turns a photograph into a pen-width-aware SVG in
+Robot Sketch Studio v0.5.0 turns a photograph or ready-made line-art image into a pen-width-aware SVG in
 millimetres. It preserves the visual density of the AI sketch with real drawing
 passes suitable for a Rotrix DexArm workflow; it does not control the arm.
 
-## What is new in v0.4.2
+## What is new in v0.5.0
+
+- **Generated Line-Art Import** accepts ready-made PNG/JPG/WebP line drawings,
+  including transparent PNG, and works fully offline without AI, XDoG, or Canny.
+- **Preserve Quality** protects thin hair, glasses, eyes, lips, clothing lines,
+  and small high-confidence details. **DexArm Optimized** cautiously reduces
+  paths and automatically falls back when centerline/face retention degrades.
+- **Auto** measures background, contrast, noise, physical stroke width, and
+  resolution, then exposes every selected millimetre setting for manual tuning.
+- Source, cleaned mask, centerline overlay, and physical SVG previews update in
+  the browser. Metrics include paths, nodes, lengths, lifts, overlap, final
+  80 × 113 mm size, and configurable estimated drawing time.
+- Direct SVG paths use black M/L/C strokes, round caps/joins, no fill or
+  unsupported transforms, and one real connected trajectory per path.
+
+The v0.4.2 Single-Line workflow remains available unchanged:
 
 - **Event Single-Line / Один контур — одна линия** exports centerlines only:
   no structural contour, fill pass, repeated coverage pass, or fake multi-`M`
@@ -56,7 +71,7 @@ DexArm Fidelity from v0.3.1 is unchanged and remains the quality-first default:
 
 ### Release ZIP
 
-1. Download and extract RobotSketchStudio-v0.4.2-windows-x64.zip.
+1. Download and extract RobotSketchStudio-v0.5.0-windows-x64.zip.
 2. Double-click RobotSketchStudio.exe. It starts without a console window and
    opens <http://127.0.0.1:8000>.
 3. Open **Models** and download **Informative Drawings (official)**.
@@ -86,6 +101,25 @@ python -m robot_sketch_studio
 ~~~
 
 ## Choosing a mode
+
+### Generated Line-Art Import
+
+Use this when another image generator or drawing application has already made
+a clean black-on-white (or transparent) line drawing. Select the engine, choose
+**Preserve Quality** or **DexArm Optimized**, set the final paper/pen size, and
+press **Auto · analyze**. You can also paste an image from the clipboard.
+
+This mode does not run a photo model and does not trace both sides of a thick
+stroke: it converts thick ink to one centerline while preserving thin semantic
+lines. `centerline-overlay.png` shows exactly what will become the physical
+trajectory. See [the line-art import guide](docs/generated-line-art.md).
+
+Suggested generation instruction:
+
+> Create clean minimalist black pen line art on a pure white or transparent
+> background. Preserve identity, pose, silhouette, facial features, hair and
+> clothing structure. Use a small number of smooth connected strokes. No gray,
+> shadows, texture, hatching, dots, fill, duplicated outlines, text or objects.
 
 ### Clean AI Sketch
 
@@ -128,6 +162,7 @@ prompt are in [docs/artistic-remote.md](docs/artistic-remote.md).
 
 | Preset | Mode | Paths | Pen / curve tolerance |
 |---|---|---|---|
+| Generated Line-Art Import | Offline centerline | Automatic from topology | 0.8 / Auto mm; 80 × 113 mm |
 | DexArm Fidelity | Plotter fidelity | Automatic, guard 3000 | 0.5 / 0.08 mm |
 | Event Quality / Массовый портрет | Event quality | Quick 300–450; Balanced 450–650; Detailed 650–850 | 0.8 / 0.3 mm |
 | Event Single-Line / Один контур — одна линия | Centerline only | Automatic from topology | 0.8 / 0.2 mm; 80 × 113 mm |
@@ -171,7 +206,7 @@ runtime/
 │                  vector-preview.png,difference-overlay.png,
 │                  drawing-speed.svg,trajectory-speed.json,
 │                  vector-speed-preview.png,speed-difference-overlay.png,
-│                  rotrics-line-test.svg}
+│                  rotrics-line-test.svg,centerline-overlay.png}
 └── models/lineart/{sk_model.pth,sk_model2.pth}
 ~~~
 
@@ -203,6 +238,7 @@ Main endpoints:
 - GET /api/v1/models
 - POST /api/v1/models/{model_id}/download
 - POST /api/v1/remote/test
+- POST /api/v1/line-art/analyze
 - POST /api/v1/jobs
 - GET /api/v1/jobs/{job_id}
 - GET /api/v1/jobs/{job_id}/artifacts
@@ -252,7 +288,8 @@ time accounting, raster metrics, API jobs, remote image edits, and pipeline outp
 
 Known limitations: AI quality still depends on the photograph and pretrained
 model domain; very cluttered or occluded scenes can require Artistic Remote or
-manual cleanup. The ComfyUI adapter requires a user-supplied API-format workflow.
+manual cleanup. Imported line art with touching unrelated strokes can be
+topologically ambiguous and may need source cleanup. The ComfyUI adapter requires a user-supplied API-format workflow.
 ONNX/DirectML and real robot control are intentionally outside this release.
 
 See [architecture](docs/architecture.md), [vectorization](docs/vectorization.md),

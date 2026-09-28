@@ -41,7 +41,7 @@ curl.exe -H "Authorization: Bearer YOUR_TOKEN" http://HOST-IP:8000/api/v1/jobs/J
 
 OpenAPI documentation is at http://HOST-IP:8000/docs.
 
-## Vector options in v0.4.2
+## Vector options in v0.5.0
 
 `vectorization_mode` accepts `plotter_fidelity`, `event_quality`,
 `event_single_line`, `event_speed`, `centerline`, or `minimal`. Fidelity uses
@@ -68,6 +68,13 @@ import scaling. The matching preset name is `event_single_line`. Schema 1.5
 adds `redundant_path_count`, `parallel_overlap_ratio`,
 `unique_centerline_coverage`, and `silhouette_recall`.
 
+For existing line art, send `engine: "generated_line_art"` and
+`drawing_preset: "generated_line_art"`. `line_art_import_profile` accepts
+`preserve_quality` or `dexarm_optimized`; `line_art_auto` defaults to true.
+POST `/api/v1/line-art/analyze` accepts the same multipart image/options fields
+and returns detected background, line level, physical stroke width, noise ratio,
+and recommended manual values. It is offline and does not create a job.
+
 Completed jobs list six artifacts: confidence.png, sketch.png, drawing.svg,
 trajectory.json, vector-preview.png, and difference-overlay.png. Schema 1.2
 trajectory JSON includes exact M/L/C commands, quality metrics, warnings, and
@@ -77,6 +84,7 @@ Event Quality, Event Single-Line, and legacy Event Speed jobs additionally list
 drawing-speed.svg, trajectory-speed.json, vector-speed-preview.png, and
 speed-difference-overlay.png. Single-Line also lists rotrics-line-test.svg. The original six
 names remain present so existing clients do not need conditional download code.
+Generated line-art jobs additionally list `centerline-overlay.png`.
 
 ## Models and remote image edits
 

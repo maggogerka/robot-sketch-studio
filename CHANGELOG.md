@@ -2,6 +2,21 @@
 
 All notable changes are documented here. This project follows semantic versioning.
 
+## 0.5.0 — 2026-09-28
+
+- Added fully offline `generated_line_art` import with alpha-to-white decoding,
+  soft grayscale confidence, automatic background/line/noise/stroke analysis,
+  Preserve Quality and DexArm Optimized profiles, and adjustable physical mm
+  controls.
+- Reused edge-disjoint Single-Line topology to create one centerline per thick
+  source stroke, protect thin/high-confidence face details, prevent unsupported
+  joins, fit bounded cubic curves, and route real pen lifts.
+- Added clipboard input, Auto analysis API/UI, quick parameter preview,
+  centerline overlay, node/physical metrics, black DexArm-safe SVG, synthetic
+  regression fixtures, documentation, and portable-build coverage.
+- Existing photo engines, Event Quality, Event Single-Line, Fidelity, saved API
+  options, and standard artifact names remain compatible.
+
 ## 0.4.2 — 2026-09-27
 
 - Added `event_single_line`, the Event Single-Line preset, and the Rotrics
