@@ -364,6 +364,7 @@ def _can_join(
     low_threshold: float,
     free_gap_px: float,
     support_factor: float = 0.35,
+    strict_gap_direction: bool = False,
 ) -> tuple[bool, float]:
     distance = math.dist(first[-1], second[0])
     if distance <= 0 or distance > maximum_distance:
@@ -385,7 +386,7 @@ def _can_join(
     turn = _angle_degrees(incoming, outgoing)
     if turn > maximum_angle:
         return False, math.inf
-    if distance > 1.5 and (
+    if (strict_gap_direction or distance > 1.5) and (
         _angle_degrees(incoming, gap) > maximum_angle * 1.5
         or _angle_degrees(gap, outgoing) > maximum_angle * 1.5
     ):
@@ -410,6 +411,7 @@ def merge_close_paths(
     low_threshold: float,
     free_gap_px: float,
     support_factor: float = 0.35,
+    strict_gap_direction: bool = False,
 ) -> list[list[Pixel]]:
     if maximum_distance <= 0 or len(paths) < 2:
         return paths
@@ -453,6 +455,7 @@ def merge_close_paths(
                                 low_threshold,
                                 free_gap_px,
                                 support_factor,
+                                strict_gap_direction,
                             )
                             if allowed and (best is None or score < best[0]):
                                 best = (
@@ -509,6 +512,8 @@ class VectorResult:
     pen_width_mm: float | None = None
     vector_preview: np.ndarray | None = None
     difference_overlay: np.ndarray | None = None
+    centerline_overlay: np.ndarray | None = None
+    stroke_color: str = "#111111"
     warnings: list[str] = field(default_factory=list)
 
 

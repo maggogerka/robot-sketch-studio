@@ -183,6 +183,7 @@ class JobManager:
             "vector-speed-preview.png",
             "speed-difference-overlay.png",
             "rotrics-line-test.svg",
+            "centerline-overlay.png",
         }:
             raise JobNotFoundError(name)
         path = self._result_dir(record.id) / name

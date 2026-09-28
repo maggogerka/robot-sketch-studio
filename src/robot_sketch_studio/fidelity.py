@@ -23,6 +23,7 @@ from robot_sketch_studio.models import (
     DrawingStats,
     FillStrategy,
     ProcessingOptions,
+    SketchEngineName,
     VectorizationMode,
 )
 from robot_sketch_studio.vectorization import (
@@ -756,7 +757,7 @@ def write_fidelity_svg(result: VectorResult, destination: Path) -> None:
                 "id": f"stroke-{index + 1}",
                 "d": " ".join(data),
                 "fill": "none",
-                "stroke": "#111111",
+                "stroke": result.stroke_color,
                 "stroke-width": _number(result.pen_width_mm),
                 "stroke-linecap": "round",
                 "stroke-linejoin": "round",
@@ -811,6 +812,12 @@ def write_fidelity_trajectory(
         "generator": f"Robot Sketch Studio v{__version__}",
         "author": "maggogerka",
         "units": "mm",
+        "engine": options.engine.value,
+        "line_art_import_profile": (
+            options.line_art_import_profile.value
+            if options.engine == SketchEngineName.GENERATED_LINE_ART
+            else None
+        ),
         "mode": options.vectorization_mode.value,
         "vectorization_mode": options.vectorization_mode.value,
         "export_profile": options.export_profile.value,
@@ -860,6 +867,7 @@ def write_fidelity_trajectory(
             "rendered_ink_area_px": result.stats.rendered_ink_area_px,
             "source_ink_area": result.stats.source_ink_area,
             "rendered_ink_area": result.stats.rendered_ink_area,
+            "node_count": result.stats.node_count,
         },
         "page": {
             "width": result.width_mm,

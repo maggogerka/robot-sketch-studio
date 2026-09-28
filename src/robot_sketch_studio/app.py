@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from robot_sketch_studio import __version__
 from robot_sketch_studio.config import Settings
+from robot_sketch_studio.engines import decode_line_art_image
 from robot_sketch_studio.jobs import JobBusyError, JobManager, JobNotFoundError, QueueFullError
 from robot_sketch_studio.model_manager import ModelManager, UnknownModelError
 from robot_sketch_studio.models import (
@@ -27,10 +28,12 @@ from robot_sketch_studio.models import (
     ExportProfile,
     FillStrategy,
     ImageProfile,
+    LineArtImportProfile,
     PaperPreset,
     ProcessingOptions,
     RemoteBackendName,
     RemoteConnectionRequest,
+    SketchEngineName,
     VectorizationMode,
 )
 from robot_sketch_studio.providers import create_image_edit_provider
@@ -49,6 +52,7 @@ MEDIA_TYPES = {
     "vector-speed-preview.png": "image/png",
     "speed-difference-overlay.png": "image/png",
     "rotrics-line-test.svg": "image/svg+xml",
+    "centerline-overlay.png": "image/png",
 }
 
 
@@ -143,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fill_strategies=[strategy.value for strategy in FillStrategy],
             event_speed_levels=[level.value for level in EventSpeedLevel],
             event_quality_levels=[level.value for level in EventQualityLevel],
+            line_art_import_profiles=[profile.value for profile in LineArtImportProfile],
             export_profiles=[profile.value for profile in ExportProfile],
             host_mode=config.host_mode,
         )
@@ -160,6 +165,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return provider.test_connection()
         except RuntimeError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.post("/api/v1/line-art/analyze")
+    async def analyze_line_art(
+        image: UploadFile = File(...),
+        options: str = Form(default="{}"),
+    ) -> dict[str, object]:
+        limit = config.max_upload_mb * 1024 * 1024
+        data = await image.read(limit + 1)
+        await image.close()
+        if len(data) > limit:
+            raise HTTPException(
+                status_code=413, detail=f"Maximum upload size is {config.max_upload_mb} MB"
+            )
+        _detect_image(data)
+        try:
+            payload = json.loads(options)
+            if not isinstance(payload, dict):
+                raise ValueError("options must be a JSON object")
+            payload["engine"] = SketchEngineName.GENERATED_LINE_ART.value
+            parsed = ProcessingOptions.model_validate(payload)
+        except (json.JSONDecodeError, ValidationError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Invalid processing options: {exc}"
+            ) from exc
+        rgb = decode_line_art_image(data)
+        engine = manager.pipeline.engines[SketchEngineName.GENERATED_LINE_ART]
+        return engine.analyze(rgb, parsed).model_dump()
 
     @app.get("/api/v1/models")
     def list_models() -> dict[str, object]:

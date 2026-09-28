@@ -23,7 +23,7 @@ from robot_sketch_studio.fidelity import (
     _preview_images,
     _render,
 )
-from robot_sketch_studio.models import DrawingStats, ProcessingOptions
+from robot_sketch_studio.models import DrawingStats, ProcessingOptions, SketchEngineName
 from robot_sketch_studio.vectorization import (
     Pixel,
     Polyline,
@@ -268,6 +268,7 @@ def collapse_parallel_paths(
     features: list[SingleLineFeature],
     pen_width_mm: float,
     minimum_length_mm: float = 0.2,
+    maximum_distance_mm: float | None = None,
 ) -> tuple[list[SingleLineFeature], CollapseStats]:
     """Remove or trim same-component physical parallel duplicates."""
     ordered = sorted(
@@ -291,7 +292,8 @@ def collapse_parallel_paths(
             continue
         duplicated = np.zeros(len(points), dtype=bool)
         face_sensitive = feature.face_weight >= 0.15
-        distance = pen_width_mm * (0.40 if face_sensitive else 0.55)
+        base_distance = pen_width_mm * 0.55 if maximum_distance_mm is None else maximum_distance_mm
+        distance = min(base_distance, pen_width_mm * 0.40) if face_sensitive else base_distance
         full_threshold = 0.88 if face_sensitive else 0.70
         partial_threshold = 0.62 if face_sensitive else 0.35
         for reference in kept:
@@ -320,7 +322,8 @@ def collapse_parallel_paths(
         points, tangents = _sample_line(feature.line, step)
         duplicated = np.zeros(len(points), dtype=bool)
         face_sensitive = feature.face_weight >= 0.15
-        distance = pen_width_mm * (0.40 if face_sensitive else 0.55)
+        base_distance = pen_width_mm * 0.55 if maximum_distance_mm is None else maximum_distance_mm
+        distance = min(base_distance, pen_width_mm * 0.40) if face_sensitive else base_distance
         threshold = 0.88 if face_sensitive else 0.70
         for reference in kept[:index]:
             if reference.component_id == feature.component_id:
@@ -343,7 +346,12 @@ def _geometry_features(
     candidates: list[FidelityPathCandidate], options: ProcessingOptions, geometry: Geometry
 ) -> list[SingleLineFeature]:
     features: list[SingleLineFeature] = []
-    tolerance = max(0.015, options.effective_curve_tolerance_mm * 0.65)
+    tolerance = (
+        options.line_art_simplify_tolerance_mm
+        if options.engine == SketchEngineName.GENERATED_LINE_ART
+        else options.effective_curve_tolerance_mm * 0.65
+    )
+    tolerance = max(0.015, tolerance)
     for candidate in candidates:
         if candidate.path_type != "centerline":
             continue
@@ -410,6 +418,7 @@ def vectorize_event_single_line(sketch: np.ndarray, options: ProcessingOptions) 
         if not neighbors:
             direction = 0.2 if x < source.shape[1] - 1 else -0.2
             paths.append([(y, x), (y, x + direction)])
+    generated_import = options.engine == SketchEngineName.GENERATED_LINE_ART
     paths = merge_close_paths(
         paths,
         softened,
@@ -417,7 +426,8 @@ def vectorize_event_single_line(sketch: np.ndarray, options: ProcessingOptions) 
         options.maximum_join_angle_deg,
         low_threshold,
         max(1.0, options.minimum_feature_size_mm / max(geometry.scale, 1e-9)),
-        support_factor=1.0,
+        support_factor=0.0 if generated_import and options.line_art_gap_closing_mm > 0 else 1.0,
+        strict_gap_direction=generated_import,
     )
     candidates = _centerline_candidates(
         paths, source, softened, face_mask, graph, geometry, options
@@ -432,6 +442,7 @@ def vectorize_event_single_line(sketch: np.ndarray, options: ProcessingOptions) 
             collapsed,
             options.pen_width_mm,
             max(0.08, options.effective_minimum_path_length_mm * 0.35),
+            options.line_art_duplicate_tolerance_mm if generated_import else None,
         )
         removed_paths += pass_stats.removed_path_count
         input_parallel_overlap = max(
@@ -453,9 +464,10 @@ def vectorize_event_single_line(sketch: np.ndarray, options: ProcessingOptions) 
         two_opt_window=22,
         maximum_passes=3,
     )
-    commands, curves = _safe_commands(
-        lines, options, geometry, options.effective_curve_tolerance_mm
+    fit_tolerance = (
+        options.line_art_smoothing_mm if generated_import else options.effective_curve_tolerance_mm
     )
+    commands, curves = _safe_commands(lines, options, geometry, fit_tolerance)
     physical_render = _render(lines, commands, source.shape, geometry, options.pen_width_mm)
     center_render = _render(lines, commands, source.shape, geometry, geometry.scale)
     metrics = _metrics(source_skeleton, center_render, geometry.scale)
@@ -499,6 +511,7 @@ def vectorize_event_single_line(sketch: np.ndarray, options: ProcessingOptions) 
         ),
         pen_lifts=pen_lifts,
         svg_command_count=sum(1 + len(path) for path in commands),
+        node_count=sum(len(line) for line in lines),
         redundant_path_count=collapse_stats.redundant_path_count,
         parallel_overlap_ratio=collapse_stats.parallel_overlap_ratio,
         quality_score=round(quality_score, 5),
@@ -508,6 +521,9 @@ def vectorize_event_single_line(sketch: np.ndarray, options: ProcessingOptions) 
     preview = np.where(source, 0, 255).astype(np.uint8)
     vector_preview = np.where(physical_render, 0, 255).astype(np.uint8)
     _, _, difference = _preview_images(source_skeleton, center_render)
+    centerline_overlay = np.full((*source.shape, 3), 255, dtype=np.uint8)
+    centerline_overlay[source] = (205, 205, 205)
+    centerline_overlay[center_render] = (218, 55, 46)
     result = VectorResult(
         lines=lines,
         curves=curves,
@@ -519,6 +535,8 @@ def vectorize_event_single_line(sketch: np.ndarray, options: ProcessingOptions) 
         pen_width_mm=options.pen_width_mm,
         vector_preview=vector_preview,
         difference_overlay=difference,
+        centerline_overlay=centerline_overlay,
+        stroke_color="#000000" if generated_import else "#111111",
     )
     if collapse_stats.removed_path_count:
         result.warnings.append(

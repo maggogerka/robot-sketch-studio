@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 class SketchEngineName(StrEnum):
     CLEAN_AI = "clean_ai"
+    GENERATED_LINE_ART = "generated_line_art"
     ARTISTIC_REMOTE = "artistic_remote"
     OPENCV_XDOG = "opencv_xdog"
     # Compatibility alias for saved v0.2 jobs and API clients.
@@ -33,6 +34,7 @@ class ImageProfile(StrEnum):
 
 class DrawingPreset(StrEnum):
     DEXARM_FIDELITY = "dexarm_fidelity"
+    GENERATED_LINE_ART = "generated_line_art"
     EVENT_QUALITY = "event_quality"
     EVENT_SINGLE_LINE = "event_single_line"
     # Compatibility alias for v0.4.0 jobs and API clients.
@@ -69,6 +71,11 @@ class EventQualityLevel(StrEnum):
     QUICK = "quick"
     BALANCED = "balanced"
     DETAILED = "detailed"
+
+
+class LineArtImportProfile(StrEnum):
+    PRESERVE_QUALITY = "preserve_quality"
+    DEXARM_OPTIMIZED = "dexarm_optimized"
 
 
 class RemoteBackendName(StrEnum):
@@ -139,6 +146,23 @@ PRESET_DEFAULTS: dict[DrawingPreset, dict[str, float | int | bool | StrEnum]] = 
         "maximum_join_angle_deg": 20.0,
         "preserve_short_details": True,
     },
+    DrawingPreset.GENERATED_LINE_ART: {
+        "vectorization_mode": VectorizationMode.EVENT_SINGLE_LINE,
+        "export_profile": ExportProfile.ROTRICS_CENTERLINE,
+        "paper": PaperPreset.ROTRICS_80X113,
+        "margin_mm": 5.0,
+        "profile": ImageProfile.LINE_DRAWING,
+        "background": BackgroundMode.OFF,
+        "pen_width_mm": 0.8,
+        "stroke_width_mm": 0.8,
+        "fill_strategy": FillStrategy.NONE,
+        "minimum_path_length_mm": 0.15,
+        "minimum_feature_size_mm": 0.08,
+        "curve_fit_tolerance_mm": 0.1,
+        "join_distance_mm": 0.18,
+        "maximum_join_angle_deg": 14.0,
+        "preserve_short_details": True,
+    },
     DrawingPreset.MINIMAL: {
         "vectorization_mode": VectorizationMode.MINIMAL,
         "target_paths": 16,
@@ -179,6 +203,13 @@ class ProcessingOptions(BaseModel):
     vectorization_mode: VectorizationMode = VectorizationMode.PLOTTER_FIDELITY
     event_speed_level: EventSpeedLevel = EventSpeedLevel.EVENT
     event_quality_level: EventQualityLevel = EventQualityLevel.BALANCED
+    line_art_import_profile: LineArtImportProfile = LineArtImportProfile.PRESERVE_QUALITY
+    line_art_auto: bool = True
+    line_art_noise_removal_mm: float = Field(default=0.12, ge=0, le=5)
+    line_art_gap_closing_mm: float = Field(default=0.18, ge=0, le=3)
+    line_art_smoothing_mm: float = Field(default=0.1, ge=0.01, le=3)
+    line_art_simplify_tolerance_mm: float = Field(default=0.08, ge=0, le=3)
+    line_art_duplicate_tolerance_mm: float = Field(default=0.35, ge=0, le=3)
     export_profile: ExportProfile = ExportProfile.STANDARD
     detail: int = Field(default=55, ge=0, le=100)
     threshold: int = Field(default=185, ge=1, le=254)
@@ -236,6 +267,11 @@ class ProcessingOptions(BaseModel):
             and "vectorization_mode" not in self.model_fields_set
         ):
             object.__setattr__(self, "drawing_preset", DrawingPreset.BALANCED)
+        if (
+            self.engine == SketchEngineName.GENERATED_LINE_ART
+            and "drawing_preset" not in self.model_fields_set
+        ):
+            object.__setattr__(self, "drawing_preset", DrawingPreset.GENERATED_LINE_ART)
         defaults = PRESET_DEFAULTS[self.drawing_preset]
         for field_name, value in defaults.items():
             if field_name not in self.model_fields_set:
@@ -256,6 +292,10 @@ class ProcessingOptions(BaseModel):
                 object.__setattr__(self, "fill_strategy", FillStrategy.NONE)
             if "export_profile" not in self.model_fields_set:
                 object.__setattr__(self, "export_profile", ExportProfile.ROTRICS_CENTERLINE)
+        if self.engine == SketchEngineName.GENERATED_LINE_ART:
+            object.__setattr__(self, "vectorization_mode", VectorizationMode.EVENT_SINGLE_LINE)
+            object.__setattr__(self, "fill_strategy", FillStrategy.NONE)
+            object.__setattr__(self, "background", BackgroundMode.OFF)
         if (
             self.export_profile == ExportProfile.ROTRICS_CENTERLINE
             and "paper" not in self.model_fields_set
@@ -309,6 +349,7 @@ class DrawingStats(BaseModel):
     curve_segment_count: int = 0
     pen_lifts: int = 0
     svg_command_count: int = 0
+    node_count: int = 0
     ink_recall: float = 0.0
     ink_precision: float = 0.0
     ink_iou: float = 0.0
@@ -373,6 +414,7 @@ class Capabilities(BaseModel):
     fill_strategies: list[str] = Field(default_factory=list)
     event_speed_levels: list[str] = Field(default_factory=list)
     event_quality_levels: list[str] = Field(default_factory=list)
+    line_art_import_profiles: list[str] = Field(default_factory=list)
     export_profiles: list[str] = Field(default_factory=list)
     host_mode: bool
     author: str = "maggogerka"

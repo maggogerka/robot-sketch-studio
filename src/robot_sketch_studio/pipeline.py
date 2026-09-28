@@ -8,9 +8,15 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from robot_sketch_studio.engines import CleanAIEngine, OpenCVXDoGEngine
+from robot_sketch_studio.engines import (
+    CleanAIEngine,
+    GeneratedLineArtEngine,
+    OpenCVXDoGEngine,
+    decode_line_art_image,
+)
 from robot_sketch_studio.models import (
     BackgroundMode,
+    LineArtImportProfile,
     ProcessingOptions,
     SketchEngineName,
     VectorizationMode,
@@ -46,6 +52,7 @@ class SketchPipeline:
             SketchEngineName.CLEAN_AI: clean_ai,
             SketchEngineName.LINEART_AI: clean_ai,
             SketchEngineName.OPENCV_XDOG: OpenCVXDoGEngine(),
+            SketchEngineName.GENERATED_LINE_ART: GeneratedLineArtEngine(),
         }
         self.background = RembgProvider(model_dir)
         self.comfyui_workflow = comfyui_workflow
@@ -70,6 +77,12 @@ class SketchPipeline:
                     "requires_weights": False,
                     "dependency_available": True,
                     "fallback": True,
+                },
+                SketchEngineName.GENERATED_LINE_ART.value: {
+                    "available": True,
+                    "requires_weights": False,
+                    "dependency_available": True,
+                    "offline": True,
                 },
             },
             "background_removal": {
@@ -106,9 +119,10 @@ class SketchPipeline:
         remote_api_key: str = "",
     ) -> PipelineResult:
         output_dir.mkdir(parents=True, exist_ok=True)
-        rgb = self.load_image(source)
+        generated_import = options.engine == SketchEngineName.GENERATED_LINE_ART
+        rgb = decode_line_art_image(source) if generated_import else self.load_image(source)
         warnings: list[str] = []
-        if options.background != BackgroundMode.OFF:
+        if options.background != BackgroundMode.OFF and not generated_import:
             if self.background.ready(options.background.value):
                 rgb = self.background.remove(rgb, options.background.value)
             else:
@@ -117,7 +131,13 @@ class SketchPipeline:
                     "download the matching U2-Net model from Models."
                 )
 
-        if options.engine == SketchEngineName.ARTISTIC_REMOTE:
+        effective_options = options
+        if generated_import:
+            engine = self.engines[SketchEngineName.GENERATED_LINE_ART]
+            prepared = engine.prepare(rgb, options)
+            confidence = prepared.confidence
+            effective_options = prepared.options
+        elif options.engine == SketchEngineName.ARTISTIC_REMOTE:
             provider = create_image_edit_provider(
                 options.remote_backend,
                 options.remote_url or "",
@@ -130,11 +150,42 @@ class SketchPipeline:
             confidence = np.clip(1.0 - gray, 0.0, 1.0)
         else:
             confidence = self.engines[options.engine].render_confidence(rgb, options)
-        vector = vectorize(confidence, options)
+        vector = vectorize(confidence, effective_options)
+        if (
+            generated_import
+            and options.line_art_import_profile == LineArtImportProfile.DEXARM_OPTIMIZED
+            and (
+                vector.stats.face_weighted_recall < 0.84
+                or vector.stats.unique_centerline_coverage < 0.88
+            )
+        ):
+            preserve_options = options.model_copy(
+                update={
+                    "line_art_import_profile": LineArtImportProfile.PRESERVE_QUALITY,
+                    "line_art_auto": True,
+                }
+            )
+            preserve = engine.prepare(rgb, preserve_options)
+            preserve_vector = vectorize(preserve.confidence, preserve.options)
+            if (
+                preserve_vector.stats.face_weighted_recall
+                >= vector.stats.face_weighted_recall + 0.02
+                or preserve_vector.stats.unique_centerline_coverage
+                >= vector.stats.unique_centerline_coverage + 0.03
+            ):
+                vector = preserve_vector
+                confidence = preserve.confidence
+                effective_options = preserve.options
+                prepared = preserve
+                warnings.append(
+                    "DexArm Optimized changed important centerline topology; "
+                    "Preserve Quality settings were used automatically."
+                )
         confidence_path = output_dir / "confidence.png"
         sketch_path = output_dir / "sketch.png"
         vector_preview_path = output_dir / "vector-preview.png"
         difference_path = output_dir / "difference-overlay.png"
+        centerline_path = output_dir / "centerline-overlay.png"
         svg_path = output_dir / "drawing.svg"
         trajectory_path = output_dir / "trajectory.json"
         confidence_image = np.rint((1.0 - confidence) * 255.0).astype(np.uint8)
@@ -154,8 +205,8 @@ class SketchPipeline:
         else:
             difference = vector.difference_overlay
         Image.fromarray(difference, mode="RGB").save(difference_path, format="PNG", optimize=True)
-        write_svg(vector, options, svg_path)
-        write_trajectory(vector, options, trajectory_path)
+        write_svg(vector, effective_options, svg_path)
+        write_trajectory(vector, effective_options, trajectory_path)
         artifacts = {
             "confidence.png": str(confidence_path),
             "sketch.png": str(sketch_path),
@@ -164,7 +215,12 @@ class SketchPipeline:
             "drawing.svg": str(svg_path),
             "trajectory.json": str(trajectory_path),
         }
-        if options.vectorization_mode in {
+        if generated_import and vector.centerline_overlay is not None:
+            Image.fromarray(vector.centerline_overlay, mode="RGB").save(
+                centerline_path, format="PNG", optimize=True
+            )
+            artifacts["centerline-overlay.png"] = str(centerline_path)
+        if effective_options.vectorization_mode in {
             VectorizationMode.EVENT_SPEED,
             VectorizationMode.EVENT_QUALITY,
             VectorizationMode.EVENT_SINGLE_LINE,
@@ -179,8 +235,8 @@ class SketchPipeline:
             Image.fromarray(difference, mode="RGB").save(
                 speed_difference_path, format="PNG", optimize=True
             )
-            write_svg(vector, options, speed_svg_path)
-            write_trajectory(vector, options, speed_trajectory_path)
+            write_svg(vector, effective_options, speed_svg_path)
+            write_trajectory(vector, effective_options, speed_trajectory_path)
             artifacts.update(
                 {
                     "drawing-speed.svg": str(speed_svg_path),
@@ -189,13 +245,13 @@ class SketchPipeline:
                     "speed-difference-overlay.png": str(speed_difference_path),
                 }
             )
-            if options.vectorization_mode == VectorizationMode.EVENT_SINGLE_LINE:
+            if effective_options.vectorization_mode == VectorizationMode.EVENT_SINGLE_LINE:
                 from robot_sketch_studio.event_single_line import (
                     write_rotrics_line_test_svg,
                 )
 
                 diagnostic_path = output_dir / "rotrics-line-test.svg"
-                write_rotrics_line_test_svg(options, diagnostic_path)
+                write_rotrics_line_test_svg(effective_options, diagnostic_path)
                 artifacts["rotrics-line-test.svg"] = str(diagnostic_path)
         return PipelineResult(
             vector=vector,
